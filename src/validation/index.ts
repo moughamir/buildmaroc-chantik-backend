@@ -71,6 +71,8 @@ export {
   validateRfiUpdate,
   validateChangeOrderUpdate,
   validateEquipmentUpdate,
+  validateCreateHotspot,
+  validateUpdateHotspotStatus,
   validateParam,
   validateQuery,
 } from './middleware';

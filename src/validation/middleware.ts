@@ -70,6 +70,9 @@ export const validateRfiUpdate = zValidator('json', rfiUpdateSchema);
 export const validateChangeOrderUpdate = zValidator('json', changeOrderUpdateSchema);
 export const validateEquipmentUpdate = zValidator('json', equipmentUpdateSchema);
 
+export const validateCreateHotspot = zValidator('json', createHotspotSchema);
+export const validateUpdateHotspotStatus = zValidator('json', updateHotspotStatusSchema);
+
 export function validateParam(schema: Record<string, unknown>): MiddlewareHandler {
   return zValidator('param', schema as any);
 }

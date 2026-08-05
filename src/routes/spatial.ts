@@ -11,6 +11,8 @@ import {
   validateZoneCreate,
   validateCapturePointCreate,
   validatePanoramaUpload,
+  validateCreateHotspot,
+  validateUpdateHotspotStatus,
 } from '../validation/middleware';
 import type { ZoneCreateInput, CapturePointCreateInput, PanoramaUploadInput } from '../validation/schemas';
 
@@ -54,7 +56,7 @@ spatialRouter.get('/panoramas/:panoramaId/hotspots', async (c) => {
   return c.json(result);
 });
 
-spatialRouter.post('/panoramas/:panoramaId/hotspots', async (c) => {
+spatialRouter.post('/panoramas/:panoramaId/hotspots', validateCreateHotspot, async (c) => {
   const panoramaId = c.req.param('panoramaId');
   const input = c.req.valid('json');
   const [hotspot] = await db.insert(hotspots).values({
@@ -70,7 +72,7 @@ spatialRouter.post('/panoramas/:panoramaId/hotspots', async (c) => {
   return c.json(hotspot, 201);
 });
 
-spatialRouter.patch('/hotspots/:hotspotId', async (c) => {
+spatialRouter.patch('/hotspots/:hotspotId', validateUpdateHotspotStatus, async (c) => {
   const hotspotId = c.req.param('hotspotId');
   const input = c.req.valid('json');
   const updates: Record<string, unknown> = {};

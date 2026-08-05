@@ -5,9 +5,14 @@ import {
   projects,
   zones,
   projectHealthView,
+  rfis,
+  changeOrders,
+  blueprintSheets,
+  attendanceLogs,
+  siteDailyLogs,
 } from '../db/schema';
-import { validateProject, validateZoneCreate } from '../validation/middleware';
-import type { ProjectInput, ZoneCreateInput } from '../validation/schemas';
+import { validateProject, validateZoneCreate, validateRfi, validateChangeOrder, validateBlueprintSheet, validateSiteDailyLog } from '../validation/middleware';
+import type { ProjectInput, ZoneCreateInput, RfiInput, ChangeOrderInput, BlueprintSheetInput, SiteDailyLogInput } from '../validation/schemas';
 
 export const projectsRouter = new Hono();
 
@@ -81,4 +86,118 @@ projectsRouter.post('/:projectId/zones', validateZoneCreate, async (c) => {
   }).returning();
 
   return c.json(zone, 201);
+});
+
+projectsRouter.get('/:projectId/attendance', async (c) => {
+  const projectId = c.req.param('projectId');
+  const result = await db
+    .select({
+      id: attendanceLogs.id,
+      userId: attendanceLogs.userId,
+      clockInAt: attendanceLogs.clockInAt,
+      clockOutAt: attendanceLogs.clockOutAt,
+      totalHours: attendanceLogs.totalHours,
+      isFlagged: attendanceLogs.isFlagged,
+      flagReason: attendanceLogs.flagReason,
+      status: attendanceLogs.status,
+    })
+    .from(attendanceLogs)
+    .where(eq(attendanceLogs.projectId, projectId))
+    .all();
+
+  return c.json(result);
+});
+
+projectsRouter.get('/:projectId/daily-logs', async (c) => {
+  const projectId = c.req.param('projectId');
+  const result = await db.select().from(siteDailyLogs).where(eq(siteDailyLogs.projectId, projectId)).all();
+  return c.json(result);
+});
+
+projectsRouter.post('/:projectId/daily-logs', validateSiteDailyLog, async (c) => {
+  const projectId = c.req.param('projectId');
+  const input = c.req.valid('json') as SiteDailyLogInput;
+  const [log] = await db.insert(siteDailyLogs).values({
+    projectId,
+    submittedById: input.submittedById,
+    logDate: new Date(input.logDate),
+    weatherConditions: input.weatherConditions,
+    workSummary: input.workSummary,
+    safetyIncidentsReported: input.safetyIncidentsReported || false,
+    incidentDetails: input.incidentDetails,
+  }).returning();
+
+  return c.json(log, 201);
+});
+
+projectsRouter.get('/:projectId/rfis', async (c) => {
+  const projectId = c.req.param('projectId');
+  const result = await db.select().from(rfis).where(eq(rfis.projectId, projectId)).all();
+  return c.json(result);
+});
+
+projectsRouter.post('/:projectId/rfis', validateRfi, async (c) => {
+  const projectId = c.req.param('projectId');
+  const input = c.req.valid('json') as RfiInput;
+  const maxRfi = await db.select({ maxNum: rfis.rfiNumber }).from(rfis).where(eq(rfis.projectId, projectId)).orderBy(rfis.rfiNumber, { direction: 'desc' }).limit(1).get();
+  const nextNumber = maxRfi ? maxRfi.maxNum + 1 : 1;
+
+  const [rfi] = await db.insert(rfis).values({
+    projectId,
+    rfiNumber: nextNumber,
+    title: input.title,
+    question: input.question,
+    answer: input.answer,
+    status: input.status || 'draft',
+    createdById: input.createdById,
+    assignedToId: input.assignedToId,
+    dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
+  }).returning();
+
+  return c.json(rfi, 201);
+});
+
+projectsRouter.get('/:projectId/change-orders', async (c) => {
+  const projectId = c.req.param('projectId');
+  const result = await db.select().from(changeOrders).where(eq(changeOrders.projectId, projectId)).all();
+  return c.json(result);
+});
+
+projectsRouter.post('/:projectId/change-orders', validateChangeOrder, async (c) => {
+  const projectId = c.req.param('projectId');
+  const input = c.req.valid('json') as ChangeOrderInput;
+  const [co] = await db.insert(changeOrders).values({
+    projectId,
+    coNumber: input.coNumber,
+    title: input.title,
+    description: input.description,
+    costImpactCents: input.costImpactCents,
+    scheduleImpactDays: input.scheduleImpactDays,
+    status: input.status || 'pending',
+    requestedById: input.requestedById,
+    approvedById: input.approvedById,
+  }).returning();
+
+  return c.json(co, 201);
+});
+
+projectsRouter.get('/:projectId/blueprints', async (c) => {
+  const projectId = c.req.param('projectId');
+  const result = await db.select().from(blueprintSheets).where(eq(blueprintSheets.projectId, projectId)).all();
+  return c.json(result);
+});
+
+projectsRouter.post('/:projectId/blueprints', validateBlueprintSheet, async (c) => {
+  const projectId = c.req.param('projectId');
+  const input = c.req.valid('json') as BlueprintSheetInput;
+  const [sheet] = await db.insert(blueprintSheets).values({
+    projectId,
+    sheetNumber: input.sheetNumber,
+    title: input.title,
+    version: input.version,
+    storagePath: input.storagePath,
+    uploadedById: input.uploadedById,
+  }).returning();
+
+  return c.json(sheet, 201);
 });
