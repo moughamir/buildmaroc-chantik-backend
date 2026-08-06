@@ -36,6 +36,8 @@ import {
   equipmentUpdateSchema,
   createHotspotSchema,
   updateHotspotStatusSchema,
+  createHotspotRestSchema,
+  updateHotspotRestSchema,
   noteCreateSchema,
   noteUpdateSchema,
   pointageRecordCreateSchema,
@@ -78,6 +80,8 @@ export const validateChangeOrderUpdate = zValidator('json', changeOrderUpdateSch
 export const validateEquipmentUpdate = zValidator('json', equipmentUpdateSchema);
 export const validateCreateHotspot = zValidator('json', createHotspotSchema);
 export const validateUpdateHotspotStatus = zValidator('json', updateHotspotStatusSchema);
+export const validateCreateHotspotRest = zValidator('json', createHotspotRestSchema);
+export const validateUpdateHotspotRest = zValidator('json', updateHotspotRestSchema);
 export const validateNoteCreate = zValidator('json', noteCreateSchema);
 export const validateNoteUpdate = zValidator('json', noteUpdateSchema);
 export const validatePointageRecordCreate = zValidator('json', pointageRecordCreateSchema);

@@ -308,6 +308,19 @@ export const panoramaUploadSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
+// REST-specific hotspot schemas. The sync-flavored schemas above embed the
+// parent id (`panoramaId`) / row id (`id`) in the payload for offline replay;
+// the REST routes take those ids from the URL instead, so the body must not
+// require them. pitch/yaw stay `string` to match the `numeric` DB columns
+// (Drizzle returns numeric as string).
+export const createHotspotRestSchema = createHotspotSchema.omit({ panoramaId: true });
+
+export const updateHotspotRestSchema = z.object({
+  title: z.string().optional(),
+  description: z.string().optional(),
+  status: z.enum(['compliant', 'issue', 'pending', 'resolved']).optional(),
+});
+
 // ============================================================================
 // 12. CONSTRUCTION ENGINEERING (additional schemas)
 // ============================================================================
@@ -373,5 +386,7 @@ export type WebhookRegisterInput = z.infer<typeof webhookRegisterSchema>;
 export type ZoneCreateInput = z.infer<typeof zoneCreateSchema>;
 export type CapturePointCreateInput = z.infer<typeof capturePointCreateSchema>;
 export type PanoramaUploadInput = z.infer<typeof panoramaUploadSchema>;
+export type CreateHotspotRestInput = z.infer<typeof createHotspotRestSchema>;
+export type UpdateHotspotRestInput = z.infer<typeof updateHotspotRestSchema>;
 export type UserProfileUpdateInput = z.infer<typeof userProfileUpdateSchema>;
 export type UserPreferencesUpdateInput = z.infer<typeof userPreferencesUpdateSchema>;
