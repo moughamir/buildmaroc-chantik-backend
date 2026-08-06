@@ -41,15 +41,17 @@ bun install
 bun run dev          # bun run --hot src/index.ts
 ```
 
-## Required env vars (no .env.example committed)
+## Required env vars (copy .env.example to .env)
 
 | Variable | Used in |
 |---|---|
-| `DATABASE_URL` | `src/db/index.ts` |
+| `DATABASE_URL` | `src/db/index.ts`, `src/db/migrate.ts`, `drizzle.config.ts` |
 | `SUPABASE_URL` | `src/middleware/auth.ts`, `src/routes/spatial.ts`, `src/routes/captures.ts` |
 | `SUPABASE_SERVICE_ROLE_KEY` | `src/middleware/auth.ts`, `src/routes/spatial.ts`, `src/routes/captures.ts` |
 | `PORT` (default 8080) | `src/index.ts` |
 | `FRONTEND_DIR` (optional) | `src/index.ts` — path to frontend static files, defaults to `../frontend` relative to backend cwd |
+
+> **Note**: leave `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` empty for local dev — `@supabase/supabase-js`'s `createClient` throws at import on malformed placeholder URLs, and the auth middleware has a dev fallback via the `x-user-id` header when they're unset.
 
 ## Architecture: Unified Server
 
@@ -58,8 +60,11 @@ The backend serves both the API (`/api/v1/...`) and the frontend static files fr
 ## DB
 
 - Drizzle ORM with `postgres` driver. Connection in `src/db/index.ts`.
-- Schema definitions in `src/db/schema/` (12 files). `src/db/schema/index.ts` re-exports all tables, enums, and types.
-- `src/db/migrate.ts` is an empty stub. `drizzle-kit` is installed but no config or migration script exists.
+- Schema definitions in `src/db/schema/` (14 files: index, enums, types, views + 10 table modules). `src/db/schema/index.ts` re-exports all tables, enums, and types.
+- **Drizzle setup**: `drizzle.config.ts` (schema `./src/db/schema/index.ts`, out `./drizzle`, postgresql, `DATABASE_URL`). Migrations live in `drizzle/` (initial `0000_*.sql` committed).
+- **Migration runner**: `src/db/migrate.ts` applies pending migrations from `./drizzle` using the app's `postgres` driver (`drizzle-orm/postgres-js/migrator`). Run with `bun run db:migrate`. CLI `drizzle-kit migrate` is intentionally not used for `db:migrate` so migrations share the app's connection semantics.
+- **Scripts**: `db:generate` (drizzle-kit generate → new migration in `drizzle/`), `db:migrate` (bun run `src/db/migrate.ts`), `db:push` (drizzle-kit push — dev-only shortcut, no migration file), `db:seed`.
+- **PostGIS**: schema uses `geometry(Point, 4326)` columns + GiST indexes. `CREATE EXTENSION IF NOT EXISTS postgis` is prepended manually to the initial migration (drizzle-kit won't emit it for custom types); a fresh DB needs it before migrating.
 - **Seed script**: `src/db/seed.ts` — seeds the database with frontend mock data (3 chantiers, trade catalog, subcontractors, pointage records). Run with `bun run db:seed`.
 - **Note**: `hotspots.pitch` and `hotspots.yaw` are `numeric` (not `text`). `pointageRecords.isCompanyTrade` is `integer` (0/1).
 
@@ -75,11 +80,11 @@ The backend serves both the API (`/api/v1/...`) and the frontend static files fr
 
 ## No test/lint/typecheck/build scripts
 
-`package.json` has only the `dev` script. Do not assume `bun test`, `bun run lint`, `bun run typecheck`, or `bun run build` exist. Available CLI tools in `node_modules/.bin/`: `drizzle-kit`, `esbuild`, `tsx`.
+`package.json` has the `dev` script plus DB scripts (`db:generate`, `db:migrate`, `db:push`, `db:seed`). Do not assume `bun test`, `bun run lint`, `bun run typecheck`, or `bun run build` exist. Available CLI tools in `node_modules/.bin/`: `drizzle-kit`, `esbuild`, `tsx`.
 
-## Not a git repo
+## Git
 
-`backend/` is not a git repository (no commits, untracked source). Do not rely on git from this directory.
+This worktree is a git worktree on branch `feature/0.4-drizzle` (repo is `backend/`-rooted via worktrees). Follow the workspace root `AGENTS.md` worktree/git-flow rules: commit with `feat(0.4): ...`, never merge/push from here.
 
 ## Cross-cutting
 
