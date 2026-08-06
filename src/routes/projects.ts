@@ -17,14 +17,24 @@ import type { ProjectInput, ZoneCreateInput, RfiInput, ChangeOrderInput, Bluepri
 
 export const projectsRouter = new Hono();
 
-// [0.1] Alias GET / that resolves orgId from the authenticated user's organization membership
+// [0.1] Alias GET / — the frontend calls GET /api/v1/projects with no orgId.
+// The org is resolved from the authenticated user's organization membership,
+// and an explicit `?orgId=` query param is honored when present (backwards-compatible).
 projectsRouter.get('/', async (c) => {
   const userId = c.get('userId');
   if (!userId) {
     return c.json({ error: 'Authentication required' }, 401);
   }
 
-  // Look up the user's first organization membership
+  const orgId = c.req.query('orgId');
+
+  if (orgId) {
+    // Caller passed an explicit orgId — return that org's projects directly.
+    const result = await db.select().from(projects).where(eq(projects.organizationId, orgId));
+    return c.json(result);
+  }
+
+  // Look up the user's first organization membership (default org)
   const [member] = await db
     .select({ organizationId: organizationMembers.organizationId })
     .from(organizationMembers)
@@ -32,7 +42,9 @@ projectsRouter.get('/', async (c) => {
     .limit(1);
 
   if (!member) {
-    return c.json({ error: 'No organization found for user' }, 404);
+    // No org membership — return an empty list rather than 404/400,
+    // so list consumers (e.g. frontend store.init) don't treat this as a failure.
+    return c.json([]);
   }
 
   const result = await db.select().from(projects).where(eq(projects.organizationId, member.organizationId));
