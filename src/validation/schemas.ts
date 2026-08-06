@@ -305,7 +305,7 @@ export const panoramaUploadSchema = z.object({
   storagePath: z.string().min(1),
   capturedAt: z.string().datetime(),
   uploadedById: z.string().uuid(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 // REST-specific hotspot schemas. The sync-flavored schemas above embed the

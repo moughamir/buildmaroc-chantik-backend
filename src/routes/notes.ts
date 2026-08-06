@@ -11,27 +11,27 @@ import type { NoteCreateInput, NoteUpdateInput } from '../validation/schemas';
 export const notesRouter = new Hono();
 
 notesRouter.get('/', async (c) => {
-  const projectId = c.req.param('projectId');
+  const projectId = c.req.param('projectId') as string;
   const result = await db.select().from(notes).where(eq(notes.projectId, projectId));
   return c.json(result);
 });
 
 notesRouter.post('/', validateNoteCreate, async (c) => {
-  const projectId = c.req.param('projectId');
-  const userId = c.get('userId') || '';
+  const projectId = c.req.param('projectId') as string;
+  const userId = ((c as any).get('userId') as string) || '';
   const input = c.req.valid('json') as NoteCreateInput;
   const [note] = await db.insert(notes).values({
     projectId,
     createdById: userId,
     content: input.content,
-  }).returning();
+  } as any).returning();
 
   return c.json(note, 201);
 });
 
 notesRouter.patch('/:noteId', validateNoteUpdate, async (c) => {
-  const projectId = c.req.param('projectId');
-  const noteId = c.req.param('noteId');
+  const projectId = c.req.param('projectId') as string;
+  const noteId = c.req.param('noteId') as string;
   const input = c.req.valid('json') as NoteUpdateInput;
   const updates: Record<string, unknown> = {};
   if (input.content !== undefined) updates.content = input.content;

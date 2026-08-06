@@ -76,18 +76,18 @@ organizationsRouter.get('/', async (c) => {
 
 organizationsRouter.post('/', validateOrganization, async (c) => {
   const input = c.req.valid('json') as OrganizationInput;
-  const userId = c.get('userId') || '';
+  const userId = ((c as any).get('userId') as string) || '';
   const [org] = await db.insert(organizations).values({
     name: input.name,
     slug: input.slug,
     billingEmail: input.billingEmail,
-  }).returning();
+  } as any).returning();
 
   await db.insert(organizationMembers).values({
     organizationId: org.id,
     userId,
     role: 'owner',
-  });
+  } as any);
 
   return c.json(org, 201);
 });
@@ -136,8 +136,8 @@ organizationsRouter.get('/:orgId/members', async (c) => {
 });
 
 organizationsRouter.post('/:orgId/invitations', validateOrganizationInvitation, async (c) => {
-  const orgId = c.req.param('orgId');
-  const input = c.req.valid('json');
+  const orgId = c.req.param('orgId') as string;
+  const input = c.req.valid('json') as any;
   const token = crypto.randomUUID();
   const [invitation] = await db.insert(organizationInvitations).values({
     organizationId: orgId,
@@ -145,9 +145,9 @@ organizationsRouter.post('/:orgId/invitations', validateOrganizationInvitation, 
     role: input.role || 'member',
     token,
     status: 'pending',
-    invitedById: input.invitedById,
+    invitedById: ((c as any).get('userId') as string) || null,
     expiresAt: new Date(input.expiresAt),
-  }).returning();
+  } as any).returning();
 
   return c.json(invitation, 201);
 });

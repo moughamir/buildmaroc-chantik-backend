@@ -12,7 +12,7 @@ import type { PointageRecordCreateInput, PointageRecordUpdateInput, PointageQuer
 export const pointageRouter = new Hono();
 
 pointageRouter.get('/projects/:projectId/pointage', validatePointageQuery, async (c) => {
-  const projectId = c.req.param('projectId');
+  const projectId = c.req.param('projectId') as string;
   const query = c.req.valid('query') as PointageQueryInput;
   const dateFilter = query.date ? new Date(query.date) : new Date();
 
@@ -29,7 +29,7 @@ pointageRouter.get('/projects/:projectId/pointage', validatePointageQuery, async
 });
 
 pointageRouter.post('/projects/:projectId/pointage', validatePointageRecordCreate, async (c) => {
-  const projectId = c.req.param('projectId');
+  const projectId = c.req.param('projectId') as string;
   const input = c.req.valid('json') as PointageRecordCreateInput;
   const [record] = await db.insert(pointageRecords).values({
     projectId,
@@ -37,7 +37,7 @@ pointageRouter.post('/projects/:projectId/pointage', validatePointageRecordCreat
     count: input.count,
     isCompanyTrade: input.isCompanyTrade ? 1 : 0,
     subcontractorId: input.subcontractorId,
-  }).returning();
+  } as any).returning();
 
   return c.json(record, 201);
 });

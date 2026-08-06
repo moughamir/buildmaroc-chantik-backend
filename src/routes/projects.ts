@@ -24,7 +24,7 @@ export const projectsRouter = new Hono();
 // The org is resolved from the authenticated user's organization membership,
 // and an explicit `?orgId=` query param is honored when present (backwards-compatible).
 projectsRouter.get('/', async (c) => {
-  const userId = c.get('userId');
+  const userId = (c as any).get('userId') as string;
   if (!userId) {
     return c.json({ error: 'Authentication required' }, 401);
   }

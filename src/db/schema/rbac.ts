@@ -1,5 +1,4 @@
 import { pgTable, uuid, varchar, boolean, timestamp, index, primaryKey } from 'drizzle-orm/pg-core';
-import { orgRoleEnum } from './enums';
 import { resourceTypeEnum, permissionActionEnum } from './enums';
 import { organizations } from './organizations';
 import { users } from './users';
@@ -7,7 +6,7 @@ import { users } from './users';
 export const customRoles = pgTable('custom_roles', {
   id: uuid('id').primaryKey().defaultRandom(),
   organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }).notNull(),
-  name: varchar('name', { length: 50 }).notNull(), 
+  name: varchar('name', { length: 50 }).notNull(),
   isSystem: boolean('is_system').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });

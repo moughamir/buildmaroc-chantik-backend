@@ -1,9 +1,7 @@
-import { sql } from 'drizzle-orm';
 import { pgTable, uuid, text, timestamp, varchar, boolean, index } from 'drizzle-orm/pg-core';
-import { authenticatedRole } from './enums';
 
 export const users = pgTable('users', {
-  id: uuid('id').primaryKey(), 
+  id: uuid('id').primaryKey(),
   email: text('email').notNull().unique(),
   fullName: text('full_name'),
   avatarUrl: text('avatar_url'),
@@ -12,7 +10,7 @@ export const users = pgTable('users', {
 
 export const userPreferences = pgTable('user_preferences', {
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).primaryKey(),
-  theme: varchar('theme', { length: 20 }).default('system').notNull(), 
+  theme: varchar('theme', { length: 20 }).default('system').notNull(),
   locale: varchar('locale', { length: 10 }).default('fr-FR').notNull(),
   timezone: varchar('timezone', { length: 50 }).default('UTC').notNull(),
   offlineModeDefault: boolean('offline_mode_default').default(true).notNull(),

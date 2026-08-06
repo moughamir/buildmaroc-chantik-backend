@@ -51,11 +51,11 @@ constructionRootRouter.patch('/equipment/:eqId', validateEquipmentUpdate, async 
   if (input.currentProjectId !== undefined) updates.currentProjectId = input.currentProjectId;
   if (input.lastServiceDate !== undefined) updates.lastServiceDate = new Date(input.lastServiceDate);
 
-  const [eq] = await db.update(equipment)
+  const [updatedEq] = await db.update(equipment)
     .set(updates)
     .where(eq(equipment.id, eqId))
     .returning();
 
-  if (!eq) return c.json({ error: 'Equipment not found' }, 404);
-  return c.json(eq);
+  if (!updatedEq) return c.json({ error: 'Equipment not found' }, 404);
+  return c.json(updatedEq);
 });

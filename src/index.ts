@@ -14,6 +14,10 @@ import { attendanceRouter } from './routes/attendance';
 import { constructionRootRouter } from './routes/construction-root';
 import { notesRouter } from './routes/notes';
 import { pointageRouter } from './routes/pointage';
+import { billingRouter } from './routes/billing';
+import { rbacRouter } from './routes/rbac';
+import { constructionRouter } from './routes/construction';
+import { workforceRouter } from './routes/workforce';
 
 const app = new Hono();
 
@@ -39,9 +43,15 @@ app.route('/api/v1', spatialRouter);
 app.route('/api/v1', attendanceRouter);
 app.route('/api/v1', constructionRootRouter);
 app.route('/api/v1', pointageRouter);
+app.route('/api/v1', billingRouter);
+app.route('/api/v1', rbacRouter);
+app.route('/api/v1', constructionRouter);
+app.route('/api/v1', workforceRouter);
 app.route('/api/v1/projects/:projectId/notes', notesRouter);
 
-const frontendDir = process.env.FRONTEND_DIR || join(process.cwd(), '..', 'frontend');
+const baseFrontendDir = process.env.FRONTEND_DIR || join(process.cwd(), '..', 'frontend');
+const distDir = join(baseFrontendDir, 'dist');
+const frontendDir = await Bun.file(join(distDir, 'index.html')).exists() ? distDir : baseFrontendDir;
 
 app.use('*', async (c, next) => {
   const url = new URL(c.req.url);

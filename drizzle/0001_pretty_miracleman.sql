@@ -1,0 +1,1 @@
+ALTER TYPE "public"."org_role" ADD VALUE 'saas_owner' BEFORE 'owner';
