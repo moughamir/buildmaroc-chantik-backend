@@ -1,4 +1,4 @@
-export { authenticatedRole, orgRoleEnum, inviteStatusEnum, subscriptionPlanEnum, projectStatusEnum, projectRoleEnum, hotspotStatusEnum, webhookEventEnum, permissionActionEnum, resourceTypeEnum, shiftStatusEnum, attendanceMethodEnum, rfiStatusEnum, changeOrderstatusEnum, equipmentStatusEnum } from './enums';
+export { authenticatedRole, orgRoleEnum, inviteStatusEnum, subscriptionPlanEnum, projectStatusEnum, projectRoleEnum, hotspotStatusEnum, webhookEventEnum, permissionActionEnum, resourceTypeEnum, shiftStatusEnum, attendanceMethodEnum, rfiStatusEnum, changeOrderStatusEnum, equipmentStatusEnum, operationalStatusEnum } from './enums';
 export { geometryPoint } from './types';
 export { users, userPreferences, userSecurityLogs } from './users';
 export { organizations, organizationMembers, organizationInvitations, teams, teamMembers } from './organizations';
@@ -9,3 +9,5 @@ export { auditLogs } from './audit';
 export { projectHealthView } from './views';
 export { workCrews, crewMembers, attendanceLogs, siteDailyLogs } from './workforce';
 export { rfis, changeOrders, equipment, blueprintSheets } from './construction';
+export { notes } from './notes';
+export { tradeCatalog, subcontractors, pointageRecords } from './pointage';

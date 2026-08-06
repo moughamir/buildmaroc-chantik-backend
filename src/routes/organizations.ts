@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db';
 import { eq, and } from 'drizzle-orm';
+import { createHash } from 'crypto';
 import {
   organizations,
   organizationMembers,
@@ -23,6 +24,7 @@ import {
 import {
   validateOrganization,
   validateUpdateOrganization,
+  validateOrganizationInvitation,
   validateInvitationAccept,
   validateTeamCreate,
   validateTeamMemberAssign,
@@ -74,18 +76,25 @@ organizationsRouter.get('/', async (c) => {
 
 organizationsRouter.post('/', validateOrganization, async (c) => {
   const input = c.req.valid('json') as OrganizationInput;
+  const userId = c.get('userId') || '';
   const [org] = await db.insert(organizations).values({
     name: input.name,
     slug: input.slug,
     billingEmail: input.billingEmail,
   }).returning();
 
+  await db.insert(organizationMembers).values({
+    organizationId: org.id,
+    userId,
+    role: 'owner',
+  });
+
   return c.json(org, 201);
 });
 
 organizationsRouter.get('/:orgId', async (c) => {
   const orgId = c.req.param('orgId');
-  const org = await db.select().from(organizations).where(eq(organizations.id, orgId)).get();
+  const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
   if (!org) return c.json({ error: 'Organization not found' }, 404);
   return c.json(org);
 });
@@ -145,7 +154,7 @@ organizationsRouter.post('/:orgId/invitations', validateOrganizationInvitation, 
 
 organizationsRouter.get('/:orgId/roles', async (c) => {
   const orgId = c.req.param('orgId');
-  const roles = await db.select().from(customRoles).where(eq(customRoles.organizationId, orgId)).all();
+  const roles = await db.select().from(customRoles).where(eq(customRoles.organizationId, orgId));
   return c.json(roles);
 });
 
@@ -202,7 +211,7 @@ organizationsRouter.post('/:orgId/users/:userId/roles', validateUserRoleAssign, 
 
 organizationsRouter.get('/:orgId/subscription', async (c) => {
   const orgId = c.req.param('orgId');
-  const sub = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, orgId)).get();
+  const [sub] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, orgId)).limit(1);
   if (!sub) return c.json({ error: 'Subscription not found' }, 404);
   return c.json(sub);
 });
@@ -211,7 +220,7 @@ organizationsRouter.post('/:orgId/subscription/checkout', validateCheckoutSessio
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as CheckoutSessionInput;
 
-  const subscription = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, orgId)).get();
+  const [subscription] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, orgId)).limit(1);
   if (!subscription) return c.json({ error: 'Subscription not found' }, 404);
 
   return c.json({
@@ -222,13 +231,13 @@ organizationsRouter.post('/:orgId/subscription/checkout', validateCheckoutSessio
 
 organizationsRouter.get('/:orgId/invoices', async (c) => {
   const orgId = c.req.param('orgId');
-  const result = await db.select().from(invoices).where(eq(invoices.organizationId, orgId)).all();
+  const result = await db.select().from(invoices).where(eq(invoices.organizationId, orgId));
   return c.json(result);
 });
 
 organizationsRouter.get('/:orgId/api-keys', async (c) => {
   const orgId = c.req.param('orgId');
-  const result = await db.select({ id: apiKeys.id, name: apiKeys.name, prefix: apiKeys.prefix, createdAt: apiKeys.createdAt }).from(apiKeys).where(eq(apiKeys.organizationId, orgId)).all();
+  const result = await db.select({ id: apiKeys.id, name: apiKeys.name, prefix: apiKeys.prefix, createdAt: apiKeys.createdAt }).from(apiKeys).where(eq(apiKeys.organizationId, orgId));
   return c.json(result);
 });
 
@@ -237,7 +246,7 @@ organizationsRouter.post('/:orgId/api-keys', validateApiKeyCreate, async (c) => 
   const input = c.req.valid('json') as ApiKeyCreateInput;
   const rawKey = `ck_${crypto.randomUUID().replace(/-/g, '')}`;
   const prefix = rawKey.slice(0, 10);
-  const keyHash = rawKey;
+  const keyHash = createHash('sha256').update(rawKey).digest('hex');
 
   const [apiKey] = await db.insert(apiKeys).values({
     organizationId: orgId,
@@ -259,7 +268,7 @@ organizationsRouter.delete('/:orgId/api-keys/:keyId', async (c) => {
 
 organizationsRouter.get('/:orgId/webhooks', async (c) => {
   const orgId = c.req.param('orgId');
-  const result = await db.select().from(webhooks).where(eq(webhooks.organizationId, orgId)).all();
+  const result = await db.select().from(webhooks).where(eq(webhooks.organizationId, orgId));
   return c.json(result);
 });
 
@@ -286,7 +295,7 @@ organizationsRouter.delete('/:orgId/webhooks/:webhookId', async (c) => {
 
 organizationsRouter.get('/:orgId/projects', async (c) => {
   const orgId = c.req.param('orgId');
-  const result = await db.select().from(projects).where(eq(projects.organizationId, orgId)).all();
+  const result = await db.select().from(projects).where(eq(projects.organizationId, orgId));
   return c.json(result);
 });
 
@@ -340,7 +349,7 @@ organizationsRouter.post('/:orgId/crews', validateWorkCrew, async (c) => {
 
 organizationsRouter.get('/:orgId/equipment', async (c) => {
   const orgId = c.req.param('orgId');
-  const result = await db.select().from(equipment).where(eq(equipment.organizationId, orgId)).all();
+  const result = await db.select().from(equipment).where(eq(equipment.organizationId, orgId));
   return c.json(result);
 });
 

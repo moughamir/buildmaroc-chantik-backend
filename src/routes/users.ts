@@ -12,7 +12,7 @@ export const usersRouter = new Hono();
 
 usersRouter.get('/me', async (c) => {
   const userId = c.req.header('x-user-id') || '';
-  const user = await db.select().from(users).where(eq(users.id, userId)).get();
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) return c.json({ error: 'User not found' }, 404);
   return c.json(user);
 });
@@ -31,7 +31,7 @@ usersRouter.patch('/me', validateUserProfileUpdate, async (c) => {
 
 usersRouter.get('/me/preferences', async (c) => {
   const userId = c.req.header('x-user-id') || '';
-  const prefs = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId)).get();
+  const [prefs] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId)).limit(1);
   if (!prefs) return c.json({ error: 'Preferences not found' }, 404);
   return c.json(prefs);
 });
@@ -57,6 +57,6 @@ usersRouter.patch('/me/preferences', validateUserPreferencesUpdate, async (c) =>
 
 usersRouter.get('/me/security-logs', async (c) => {
   const userId = c.req.header('x-user-id') || '';
-  const logs = await db.select().from(userSecurityLogs).where(eq(userSecurityLogs.userId, userId)).all();
+  const logs = await db.select().from(userSecurityLogs).where(eq(userSecurityLogs.userId, userId));
   return c.json(logs);
 });

@@ -328,3 +328,50 @@ export const equipmentUpdateSchema = z.object({
   currentProjectId: z.string().uuid().optional(),
   lastServiceDate: z.string().datetime().optional(),
 });
+
+export const noteCreateSchema = z.object({
+  content: z.string().min(1),
+});
+
+export const noteUpdateSchema = z.object({
+  content: z.string().min(1).optional(),
+});
+
+export const pointageRecordCreateSchema = z.object({
+  tradeId: z.string().uuid().optional(),
+  count: z.number().int().nonnegative(),
+  isCompanyTrade: z.boolean(),
+  subcontractorId: z.string().uuid().optional(),
+});
+
+export const pointageRecordUpdateSchema = z.object({
+  count: z.number().int().nonnegative().optional(),
+});
+
+export const pointageQuerySchema = z.object({
+  date: z.string().datetime().optional(),
+});
+
+export type NoteCreateInput = z.infer<typeof noteCreateSchema>;
+export type NoteUpdateInput = z.infer<typeof noteUpdateSchema>;
+export type PointageRecordCreateInput = z.infer<typeof pointageRecordCreateSchema>;
+export type PointageRecordUpdateInput = z.infer<typeof pointageRecordUpdateSchema>;
+export type PointageQueryInput = z.infer<typeof pointageQuerySchema>;
+export type RfiUpdateInput = z.infer<typeof rfiUpdateSchema>;
+export type ChangeOrderUpdateInput = z.infer<typeof changeOrderUpdateSchema>;
+export type EquipmentUpdateInput = z.infer<typeof equipmentUpdateSchema>;
+export type InvitationAcceptInput = z.infer<typeof invitationAcceptSchema>;
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;
+export type TeamCreateInput = z.infer<typeof teamCreateSchema>;
+export type TeamMemberAssignInput = z.infer<typeof teamMemberAssignSchema>;
+export type CustomRoleCreateInput = z.infer<typeof customRoleCreateSchema>;
+export type CustomRoleUpdateInput = z.infer<typeof customRoleUpdateSchema>;
+export type UserRoleAssignInput = z.infer<typeof userRoleAssignSchema>;
+export type CheckoutSessionInput = z.infer<typeof checkoutSessionSchema>;
+export type ApiKeyCreateInput = z.infer<typeof apiKeyCreateSchema>;
+export type WebhookRegisterInput = z.infer<typeof webhookRegisterSchema>;
+export type ZoneCreateInput = z.infer<typeof zoneCreateSchema>;
+export type CapturePointCreateInput = z.infer<typeof capturePointCreateSchema>;
+export type PanoramaUploadInput = z.infer<typeof panoramaUploadSchema>;
+export type UserProfileUpdateInput = z.infer<typeof userProfileUpdateSchema>;
+export type UserPreferencesUpdateInput = z.infer<typeof userPreferencesUpdateSchema>;

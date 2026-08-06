@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import {
   projects,
   zones,
@@ -10,15 +10,38 @@ import {
   blueprintSheets,
   attendanceLogs,
   siteDailyLogs,
+  organizationMembers,
 } from '../db/schema';
 import { validateProject, validateZoneCreate, validateRfi, validateChangeOrder, validateBlueprintSheet, validateSiteDailyLog } from '../validation/middleware';
 import type { ProjectInput, ZoneCreateInput, RfiInput, ChangeOrderInput, BlueprintSheetInput, SiteDailyLogInput } from '../validation/schemas';
 
 export const projectsRouter = new Hono();
 
+// [0.1] Alias GET / that resolves orgId from the authenticated user's organization membership
+projectsRouter.get('/', async (c) => {
+  const userId = c.get('userId');
+  if (!userId) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+
+  // Look up the user's first organization membership
+  const [member] = await db
+    .select({ organizationId: organizationMembers.organizationId })
+    .from(organizationMembers)
+    .where(eq(organizationMembers.userId, userId))
+    .limit(1);
+
+  if (!member) {
+    return c.json({ error: 'No organization found for user' }, 404);
+  }
+
+  const result = await db.select().from(projects).where(eq(projects.organizationId, member.organizationId));
+  return c.json(result);
+});
+
 projectsRouter.get('/:orgId/projects', async (c) => {
   const orgId = c.req.param('orgId');
-  const result = await db.select().from(projects).where(eq(projects.organizationId, orgId)).all();
+  const result = await db.select().from(projects).where(eq(projects.organizationId, orgId));
   return c.json(result);
 });
 
@@ -39,14 +62,14 @@ projectsRouter.post('/:orgId/projects', validateProject, async (c) => {
 
 projectsRouter.get('/:projectId', async (c) => {
   const projectId = c.req.param('projectId');
-  const project = await db.select().from(projects).where(eq(projects.id, projectId)).get();
+  const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!project) return c.json({ error: 'Project not found' }, 404);
   return c.json(project);
 });
 
-projectsRouter.patch('/:projectId', async (c) => {
+projectsRouter.patch('/:projectId', validateProject, async (c) => {
   const projectId = c.req.param('projectId');
-  const input = c.req.valid('json');
+  const input = c.req.valid('json') as ProjectInput;
   const updates: Record<string, unknown> = {};
   if (input.name !== undefined) updates.name = input.name;
   if (input.code !== undefined) updates.code = input.code;
@@ -65,14 +88,14 @@ projectsRouter.patch('/:projectId', async (c) => {
 
 projectsRouter.get('/:projectId/health', async (c) => {
   const projectId = c.req.param('projectId');
-  const health = await db.select().from(projectHealthView).where(eq(projectHealthView.projectId, projectId)).get();
+  const [health] = await db.select().from(projectHealthView).where(eq(projectHealthView.projectId, projectId)).limit(1);
   if (!health) return c.json({ error: 'Project not found' }, 404);
   return c.json(health);
 });
 
 projectsRouter.get('/:projectId/zones', async (c) => {
   const projectId = c.req.param('projectId');
-  const result = await db.select().from(zones).where(eq(zones.projectId, projectId)).all();
+  const result = await db.select().from(zones).where(eq(zones.projectId, projectId));
   return c.json(result);
 });
 
@@ -102,15 +125,14 @@ projectsRouter.get('/:projectId/attendance', async (c) => {
       status: attendanceLogs.status,
     })
     .from(attendanceLogs)
-    .where(eq(attendanceLogs.projectId, projectId))
-    .all();
+    .where(eq(attendanceLogs.projectId, projectId));
 
   return c.json(result);
 });
 
 projectsRouter.get('/:projectId/daily-logs', async (c) => {
   const projectId = c.req.param('projectId');
-  const result = await db.select().from(siteDailyLogs).where(eq(siteDailyLogs.projectId, projectId)).all();
+  const result = await db.select().from(siteDailyLogs).where(eq(siteDailyLogs.projectId, projectId));
   return c.json(result);
 });
 
@@ -132,14 +154,14 @@ projectsRouter.post('/:projectId/daily-logs', validateSiteDailyLog, async (c) =>
 
 projectsRouter.get('/:projectId/rfis', async (c) => {
   const projectId = c.req.param('projectId');
-  const result = await db.select().from(rfis).where(eq(rfis.projectId, projectId)).all();
+  const result = await db.select().from(rfis).where(eq(rfis.projectId, projectId));
   return c.json(result);
 });
 
 projectsRouter.post('/:projectId/rfis', validateRfi, async (c) => {
   const projectId = c.req.param('projectId');
   const input = c.req.valid('json') as RfiInput;
-  const maxRfi = await db.select({ maxNum: rfis.rfiNumber }).from(rfis).where(eq(rfis.projectId, projectId)).orderBy(rfis.rfiNumber, { direction: 'desc' }).limit(1).get();
+  const [maxRfi] = await db.select({ maxNum: rfis.rfiNumber }).from(rfis).where(eq(rfis.projectId, projectId)).orderBy(desc(rfis.rfiNumber)).limit(1);
   const nextNumber = maxRfi ? maxRfi.maxNum + 1 : 1;
 
   const [rfi] = await db.insert(rfis).values({
@@ -159,7 +181,7 @@ projectsRouter.post('/:projectId/rfis', validateRfi, async (c) => {
 
 projectsRouter.get('/:projectId/change-orders', async (c) => {
   const projectId = c.req.param('projectId');
-  const result = await db.select().from(changeOrders).where(eq(changeOrders.projectId, projectId)).all();
+  const result = await db.select().from(changeOrders).where(eq(changeOrders.projectId, projectId));
   return c.json(result);
 });
 
@@ -183,7 +205,7 @@ projectsRouter.post('/:projectId/change-orders', validateChangeOrder, async (c) 
 
 projectsRouter.get('/:projectId/blueprints', async (c) => {
   const projectId = c.req.param('projectId');
-  const result = await db.select().from(blueprintSheets).where(eq(blueprintSheets.projectId, projectId)).all();
+  const result = await db.select().from(blueprintSheets).where(eq(blueprintSheets.projectId, projectId));
   return c.json(result);
 });
 

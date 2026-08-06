@@ -26,7 +26,7 @@ attendanceRouter.post('/attendance/clock-in', validateAttendanceClockIn, async (
 
 attendanceRouter.post('/attendance/clock-out', validateAttendanceClockOut, async (c) => {
   const input = c.req.valid('json') as AttendanceClockOutInput;
-  const log = await db.select().from(attendanceLogs).where(eq(attendanceLogs.id, input.id)).get();
+  const [log] = await db.select().from(attendanceLogs).where(eq(attendanceLogs.id, input.id)).limit(1);
   if (!log) return c.json({ error: 'Attendance log not found' }, 404);
   if (log.clockOutAt) return c.json({ error: 'Already clocked out' }, 400);
 

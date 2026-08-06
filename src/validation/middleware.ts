@@ -34,6 +34,13 @@ import {
   rfiUpdateSchema,
   changeOrderUpdateSchema,
   equipmentUpdateSchema,
+  createHotspotSchema,
+  updateHotspotStatusSchema,
+  noteCreateSchema,
+  noteUpdateSchema,
+  pointageRecordCreateSchema,
+  pointageRecordUpdateSchema,
+  pointageQuerySchema,
 } from './schemas';
 
 export const validateSyncBatch = zValidator('json', syncBatchSchema);
@@ -69,9 +76,13 @@ export const validatePanoramaUpload = zValidator('json', panoramaUploadSchema);
 export const validateRfiUpdate = zValidator('json', rfiUpdateSchema);
 export const validateChangeOrderUpdate = zValidator('json', changeOrderUpdateSchema);
 export const validateEquipmentUpdate = zValidator('json', equipmentUpdateSchema);
-
 export const validateCreateHotspot = zValidator('json', createHotspotSchema);
 export const validateUpdateHotspotStatus = zValidator('json', updateHotspotStatusSchema);
+export const validateNoteCreate = zValidator('json', noteCreateSchema);
+export const validateNoteUpdate = zValidator('json', noteUpdateSchema);
+export const validatePointageRecordCreate = zValidator('json', pointageRecordCreateSchema);
+export const validatePointageRecordUpdate = zValidator('json', pointageRecordUpdateSchema);
+export const validatePointageQuery = zValidator('query', pointageQuerySchema);
 
 export function validateParam(schema: Record<string, unknown>): MiddlewareHandler {
   return zValidator('param', schema as any);

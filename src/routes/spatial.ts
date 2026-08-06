@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db';
 import { eq } from 'drizzle-orm';
+import { createClient } from '@supabase/supabase-js';
 import {
   zones,
   capturePoints,
@@ -16,11 +17,17 @@ import {
 } from '../validation/middleware';
 import type { ZoneCreateInput, CapturePointCreateInput, PanoramaUploadInput } from '../validation/schemas';
 
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = supabaseUrl && supabaseServiceRoleKey
+  ? createClient(supabaseUrl, supabaseServiceRoleKey)
+  : null;
+
 export const spatialRouter = new Hono();
 
 spatialRouter.get('/zones/:zoneId/capture-points', async (c) => {
   const zoneId = c.req.param('zoneId');
-  const result = await db.select().from(capturePoints).where(eq(capturePoints.zoneId, zoneId)).all();
+  const result = await db.select().from(capturePoints).where(eq(capturePoints.zoneId, zoneId));
   return c.json(result);
 });
 
@@ -50,15 +57,38 @@ spatialRouter.post('/capture-points/:cpId/panoramas', validatePanoramaUpload, as
   return c.json(panorama, 201);
 });
 
+spatialRouter.get('/panoramas/:panoramaId/asset', async (c) => {
+  const panoramaId = c.req.param('panoramaId');
+  const [panorama] = await db.select().from(panoramas).where(eq(panoramas.id, panoramaId)).limit(1);
+  if (!panorama) return c.json({ error: 'Panorama not found' }, 404);
+
+  if (!supabase) return c.json({ error: 'Storage not configured' }, 500);
+
+  const { data, error } = await supabase.storage
+    .from('chantik-assets')
+    .createSignedUrl(panorama.storagePath, 3600);
+
+  if (error) return c.json({ error: error.message }, 400);
+
+  return c.redirect(data.signedUrl);
+});
+
 spatialRouter.get('/panoramas/:panoramaId/hotspots', async (c) => {
   const panoramaId = c.req.param('panoramaId');
-  const result = await db.select().from(hotspots).where(eq(hotspots.panoramaId, panoramaId)).all();
+  const result = await db.select().from(hotspots).where(eq(hotspots.panoramaId, panoramaId));
   return c.json(result);
 });
 
 spatialRouter.post('/panoramas/:panoramaId/hotspots', validateCreateHotspot, async (c) => {
   const panoramaId = c.req.param('panoramaId');
-  const input = c.req.valid('json');
+  const input = c.req.valid('json') as {
+    createdById?: string;
+    pitch: string;
+    yaw: string;
+    title: string;
+    description?: string;
+    status?: string;
+  };
   const [hotspot] = await db.insert(hotspots).values({
     panoramaId,
     createdById: input.createdById,
@@ -66,7 +96,7 @@ spatialRouter.post('/panoramas/:panoramaId/hotspots', validateCreateHotspot, asy
     yaw: input.yaw,
     title: input.title,
     description: input.description,
-    status: input.status || 'pending',
+    status: (input.status as 'compliant' | 'issue' | 'pending' | 'resolved') || 'pending',
   }).returning();
 
   return c.json(hotspot, 201);
@@ -74,7 +104,11 @@ spatialRouter.post('/panoramas/:panoramaId/hotspots', validateCreateHotspot, asy
 
 spatialRouter.patch('/hotspots/:hotspotId', validateUpdateHotspotStatus, async (c) => {
   const hotspotId = c.req.param('hotspotId');
-  const input = c.req.valid('json');
+  const input = c.req.valid('json') as {
+    title?: string;
+    description?: string;
+    status?: string;
+  };
   const updates: Record<string, unknown> = {};
   if (input.title !== undefined) updates.title = input.title;
   if (input.description !== undefined) updates.description = input.description;

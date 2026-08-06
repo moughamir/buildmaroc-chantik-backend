@@ -11,7 +11,7 @@ export const workCrews = pgTable('work_crews', {
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
   name: varchar('name', { length: 100 }).notNull(),
   trade: varchar('trade', { length: 50 }).notNull(),
-  teamLeadId: uuid('team_lead_id').references(() => users.id, { onDelete: 'set null' }).notNull(),
+  teamLeadId: uuid('team_lead_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
   index('work_crew_org_idx').on(t.organizationId),

@@ -23,6 +23,8 @@ Bun + Hono (HTTP) + Drizzle ORM (PostgreSQL) + Supabase (storage/auth) + Zod (va
 | `/api/v1` | `src/routes/spatial.ts` | Zones, capture points, panoramas, hotspots |
 | `/api/v1` | `src/routes/attendance.ts` | Clock-in / clock-out |
 | `/api/v1` | `src/routes/construction-root.ts` | RFI/CO/equipment updates (root-level) |
+| `/api/v1` | `src/routes/pointage.ts` | Pointage records, trade catalog, subcontractors |
+| `/api/v1/projects/:projectId/notes` | `src/routes/notes.ts` | Project notes CRUD |
 
 ## Adding an endpoint (pattern)
 
@@ -44,17 +46,22 @@ bun run dev          # bun run --hot src/index.ts
 | Variable | Used in |
 |---|---|
 | `DATABASE_URL` | `src/db/index.ts` |
-| `SUPABASE_URL` | `src/routes/captures.ts` |
-| `SUPABASE_SERVICE_ROLE_KEY` | `src/routes/captures.ts` |
+| `SUPABASE_URL` | `src/middleware/auth.ts`, `src/routes/spatial.ts`, `src/routes/captures.ts` |
+| `SUPABASE_SERVICE_ROLE_KEY` | `src/middleware/auth.ts`, `src/routes/spatial.ts`, `src/routes/captures.ts` |
 | `PORT` (default 8080) | `src/index.ts` |
+| `FRONTEND_DIR` (optional) | `src/index.ts` — path to frontend static files, defaults to `../frontend` relative to backend cwd |
 
-**Port collision**: frontend dev server also uses 8080. When both are needed, run backend on a different port: `PORT=8081 bun run dev`.
+## Architecture: Unified Server
+
+The backend serves both the API (`/api/v1/...`) and the frontend static files from a single Bun server on port 8080. The frontend `server.ts` in `frontend/` is deprecated — the backend serves the frontend.
 
 ## DB
 
 - Drizzle ORM with `postgres` driver. Connection in `src/db/index.ts`.
 - Schema definitions in `src/db/schema/` (12 files). `src/db/schema/index.ts` re-exports all tables, enums, and types.
 - `src/db/migrate.ts` is an empty stub. `drizzle-kit` is installed but no config or migration script exists.
+- **Seed script**: `src/db/seed.ts` — seeds the database with frontend mock data (3 chantiers, trade catalog, subcontractors, pointage records). Run with `bun run db:seed`.
+- **Note**: `hotspots.pitch` and `hotspots.yaw` are `numeric` (not `text`). `pointageRecords.isCompanyTrade` is `integer` (0/1).
 
 ## Validation
 
@@ -62,11 +69,9 @@ bun run dev          # bun run --hot src/index.ts
 - `@hono/zod-validator` provides `zValidator('json', schema)`, `zValidator('param', schema)`, `zValidator('query', schema)`.
 - `validateParam` and `validateQuery` are generic helpers in `src/validation/middleware.ts`.
 
-## Empty stubs (do not assume implemented)
+## Auth Middleware
 
-- `src/middleware/auth.ts` — empty file
-- `src/routes/index.ts` — empty file
-- `src/db/migrate.ts` — empty file
+`src/middleware/auth.ts` implements Supabase JWT verification with a dev fallback via the `x-user-id` header. If Supabase credentials are not configured, the middleware allows requests through with `userId` set from the `x-user-id` header or `null`.
 
 ## No test/lint/typecheck/build scripts
 

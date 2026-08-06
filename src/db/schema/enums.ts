@@ -14,5 +14,6 @@ export const resourceTypeEnum = pgEnum('resource_type', ['project', 'billing', '
 export const shiftStatusEnum = pgEnum('shift_status', ['clocked_in', 'clocked_out', 'on_break', 'flagged']);
 export const attendanceMethodEnum = pgEnum('attendance_method', ['gps_geofence', 'manual_override', 'qr_code', 'nfc_tag']);
 export const rfiStatusEnum = pgEnum('rfi_status', ['draft', 'submitted', 'answered', 'closed']);
-export const changeOrderstatusEnum = pgEnum('change_order_status', ['pending', 'approved', 'rejected', 'invoiced']);
+export const changeOrderStatusEnum = pgEnum('change_order_status', ['pending', 'approved', 'rejected', 'invoiced']);
 export const equipmentStatusEnum = pgEnum('equipment_status', ['available', 'in_use', 'maintenance', 'decommissioned']);
+export const operationalStatusEnum = pgEnum('operational_status', ['en_cours', 'en_retard', 'probleme', 'termine']);

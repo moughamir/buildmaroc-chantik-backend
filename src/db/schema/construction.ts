@@ -2,7 +2,7 @@ import { pgTable, uuid, text, timestamp, varchar, integer, index, uniqueIndex } 
 import { organizations } from './organizations';
 import { users } from './users';
 import { projects } from './projects';
-import { rfiStatusEnum, changeOrderstatusEnum, equipmentStatusEnum } from './enums';
+import { rfiStatusEnum, changeOrderStatusEnum, equipmentStatusEnum } from './enums';
 
 export const rfis = pgTable('rfis', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -29,7 +29,7 @@ export const changeOrders = pgTable('change_orders', {
   description: text('description').notNull(),
   costImpactCents: integer('cost_impact_cents').default(0).notNull(),
   scheduleImpactDays: integer('schedule_impact_days').default(0).notNull(),
-  status: changeOrderstatusEnum('status').default('pending').notNull(),
+  status: changeOrderStatusEnum('status').default('pending').notNull(),
   requestedById: uuid('requested_by_id').references(() => users.id).notNull(),
   approvedById: uuid('approved_by_id').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -56,7 +56,7 @@ export const equipment = pgTable('equipment', {
 export const blueprintSheets = pgTable('blueprint_sheets', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  sheetNumber: varchar('sheetNumber', { length: 50 }).notNull(),
+  sheetNumber: varchar('sheet_number', { length: 50 }).notNull(),
   title: text('title').notNull(),
   version: integer('version').default(1).notNull(),
   storagePath: text('storage_path').notNull(),

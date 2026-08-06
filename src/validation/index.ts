@@ -35,6 +35,11 @@ export {
   rfiUpdateSchema,
   changeOrderUpdateSchema,
   equipmentUpdateSchema,
+  noteCreateSchema,
+  noteUpdateSchema,
+  pointageRecordCreateSchema,
+  pointageRecordUpdateSchema,
+  pointageQuerySchema,
 } from './schemas';
 
 export {
@@ -73,6 +78,11 @@ export {
   validateEquipmentUpdate,
   validateCreateHotspot,
   validateUpdateHotspotStatus,
+  validateNoteCreate,
+  validateNoteUpdate,
+  validatePointageRecordCreate,
+  validatePointageRecordUpdate,
+  validatePointageQuery,
   validateParam,
   validateQuery,
 } from './middleware';
@@ -113,4 +123,9 @@ export type {
   RfiUpdateInput,
   ChangeOrderUpdateInput,
   EquipmentUpdateInput,
+  NoteCreateInput,
+  NoteUpdateInput,
+  PointageRecordCreateInput,
+  PointageRecordUpdateInput,
+  PointageQueryInput,
 } from './schemas';
