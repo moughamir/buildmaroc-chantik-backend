@@ -1,9 +1,12 @@
 import { Hono } from 'hono';
 import { db } from '../db';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 import {
   projects,
   zones,
+  capturePoints,
+  panoramas,
+  hotspots,
   projectHealthView,
   rfis,
   changeOrders,
@@ -76,8 +79,78 @@ projectsRouter.get('/:projectId', async (c) => {
   const projectId = c.req.param('projectId');
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!project) return c.json({ error: 'Project not found' }, 404);
-  return c.json(project);
+
+  // [0.3] Wire captures: project → zones → capturePoints → panoramas → hotspots.
+  // A "capture" is the set of panoramas sharing a capturedAt timestamp (the seed
+  // creates one panorama per zone per capture); each capture carries the zones it
+  // was shot from and all its hotspots so the frontend 360° viewer renders with
+  // no extra spatial calls. Display fields (week/progress/operator/note) are read
+  // from the panoramas' `metadata` jsonb — DB-native, seeded per capture.
+  const zoneRows = await db.select().from(zones).where(eq(zones.projectId, project.id));
+  const captures = await assembleCaptures(zoneRows);
+
+  return c.json({ ...project, captures });
 });
+
+/**
+ * [0.3] Assemble the nested `captures` array for a project from its spatial
+ * hierarchy (zones → capture_points → panoramas → hotspots), grouped into
+ * captures by the shared `capturedAt` timestamp. Batched selects (no N+1);
+ * drizzle relational queries (`db.query`) are not available here because the
+ * schema tables define no `relations`.
+ */
+async function assembleCaptures(zoneRows: (typeof zones.$inferSelect)[]): Promise<unknown[]> {
+  if (zoneRows.length === 0) return [];
+
+  const cpRows = await db.select().from(capturePoints)
+    .where(inArray(capturePoints.zoneId, zoneRows.map((z) => z.id)));
+  if (cpRows.length === 0) return [];
+
+  const panoRows = await db.select().from(panoramas)
+    .where(inArray(panoramas.capturePointId, cpRows.map((cp) => cp.id)));
+  if (panoRows.length === 0) return [];
+
+  const hotspotRows = await db.select().from(hotspots)
+    .where(inArray(hotspots.panoramaId, panoRows.map((p) => p.id)));
+
+  const zoneById = new Map(zoneRows.map((z) => [z.id, z]));
+  const cpById = new Map(cpRows.map((cp) => [cp.id, cp]));
+  const hotspotsByPanoramaId = new Map<string, (typeof hotspots.$inferSelect)[]>();
+  for (const hotspot of hotspotRows) {
+    const list = hotspotsByPanoramaId.get(hotspot.panoramaId) ?? [];
+    list.push(hotspot);
+    hotspotsByPanoramaId.set(hotspot.panoramaId, list);
+  }
+
+  // Group panoramas by capture timestamp (all zones of one capture share it).
+  const groups = new Map<string, (typeof panoramas.$inferSelect)[]>();
+  for (const pano of panoRows) {
+    const key = pano.capturedAt.toISOString();
+    const list = groups.get(key) ?? [];
+    list.push(pano);
+    groups.set(key, list);
+  }
+
+  const zoneOf = (pano: (typeof panoramas.$inferSelect)) =>
+    zoneById.get(cpById.get(pano.capturePointId)!.zoneId)!;
+
+  const captures: unknown[] = [];
+  for (const [, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const sorted = [...group].sort((a, b) => zoneOf(a).name.localeCompare(zoneOf(b).name));
+    const first = sorted[0];
+    const meta = (first.metadata ?? {}) as Record<string, unknown>;
+
+    captures.push({
+      id: first.id,
+      capturedAt: first.capturedAt.toISOString(),
+      date: first.capturedAt.toISOString(),
+      ...meta,
+      zones: sorted.map(zoneOf),
+      hotspots: sorted.flatMap((p) => hotspotsByPanoramaId.get(p.id) ?? []),
+    });
+  }
+  return captures;
+}
 
 projectsRouter.patch('/:projectId', validateProject, async (c) => {
   const projectId = c.req.param('projectId');
