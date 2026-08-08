@@ -305,7 +305,7 @@ async function seed() {
       name: trade.name,
       category: trade.category || 'Métiers',
       icon: trade.icon || null,
-      description: trade.description || trade.notes || null,
+      description: trade.notes || null,
     } as any);
   }
   console.log(`  ✅ Seeded trade catalog (${INITIAL_COMPANY_TRADES.length} trades)`);
@@ -396,7 +396,7 @@ async function seed() {
       } as any);
 
       // Subcontractors
-      const subs = INITIAL_SUBCONTRACTORS[chantier.id] || [];
+      const subs = INITIAL_SUBCONTRACTORS;
       for (const sub of subs) {
         await db.insert(subcontractors).values({
           id: generateId(),
@@ -407,8 +407,8 @@ async function seed() {
       }
 
       // Zones & Captures
-      for (const capture of chantier.captures) {
-        for (const zone of capture.zones) {
+      for (const capture of chantier.captures ?? []) {
+        for (const zone of capture.zones ?? []) {
           const zoneId = generateId();
           await db.insert(zones).values({
             id: zoneId,
@@ -439,7 +439,7 @@ async function seed() {
             },
           } as any);
 
-          for (const hotspot of capture.hotspots) {
+          for (const hotspot of capture.hotspots ?? []) {
             await db.insert(hotspots).values({
               id: generateId(),
               panoramaId,
@@ -521,7 +521,8 @@ seed().catch((err) => {
 });
 
 // Helper parsers
-function parseFrenchDate(dateStr: string): Date | null {
+function parseFrenchDate(dateStr: string | undefined): Date | null {
+  if (!dateStr) return null;
   const monthsFR = [
     'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
     'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
@@ -548,13 +549,15 @@ function parseSurface(surfaceStr: string): number | null {
   return isNaN(num) ? null : num;
 }
 
-function parseComplianceScore(scoreStr: string): number | null {
+function parseComplianceScore(scoreStr: string | undefined): number | null {
+  if (!scoreStr) return null;
   const cleaned = scoreStr.replace(/%$/, '');
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
 }
 
-function parseScheduleDelta(scheduleStr: string): number | null {
+function parseScheduleDelta(scheduleStr: string | undefined): number | null {
+  if (!scheduleStr) return null;
   const match = scheduleStr.match(/([+-]?\d+)\s*jours/);
   if (!match) return null;
   return parseInt(match[1], 10);
