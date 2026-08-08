@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, timestamp, varchar, index, uniqueIndex, primaryKey, pgPolicy, pgRole } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, varchar, jsonb, index, uniqueIndex, unique, primaryKey, pgPolicy, pgRole } from 'drizzle-orm/pg-core';
 import { authenticatedRole } from './enums';
 import { orgRoleEnum, inviteStatusEnum } from './enums';
 import { users } from './users';
@@ -8,7 +8,9 @@ export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   slug: varchar('slug', { length: 100 }).notNull(),
-  billingEmail: text('billing_email').notNull(),
+  billingEmail: text('billing_email'),
+  logo: text('logo'),
+  metadata: jsonb('metadata'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('org_slug_idx').on(t.slug),
@@ -25,12 +27,13 @@ export const organizations = pgTable('organizations', {
 ]);
 
 export const organizationMembers = pgTable('organization_members', {
+  id: uuid('id').primaryKey().defaultRandom(),
   organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }).notNull(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   role: orgRoleEnum('role').notNull().default('member'),
-  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
-  primaryKey({ columns: [t.organizationId, t.userId] }),
+  unique('organization_members_organization_id_user_id_unique').on(t.organizationId, t.userId),
   index('org_member_user_idx').on(t.userId),
 ]);
 

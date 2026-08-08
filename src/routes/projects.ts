@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
+import { z } from 'zod';
 import { db } from '../db';
 import { eq, desc, inArray } from 'drizzle-orm';
 import {
@@ -15,16 +16,52 @@ import {
   siteDailyLogs,
   organizationMembers,
 } from '../db/schema';
-import { validateProject, validateZoneCreate, validateRfi, validateChangeOrder, validateBlueprintSheet, validateSiteDailyLog } from '../validation/middleware';
+import {
+  projectSchema,
+  zoneCreateSchema,
+  rfiSchema,
+  changeOrderSchema,
+  blueprintSheetSchema,
+  siteDailyLogSchema,
+  projectSelectSchema,
+  zoneSelectSchema,
+  rfiSelectSchema,
+  changeOrderSelectSchema,
+  blueprintSheetSelectSchema,
+  siteDailyLogSelectSchema,
+  attendanceLogSelectSchema,
+  projectHealthSelectSchema,
+  projectWithCapturesSchema,
+} from '../validation/schemas';
 import type { ProjectInput, ZoneCreateInput, RfiInput, ChangeOrderInput, BlueprintSheetInput, SiteDailyLogInput } from '../validation/schemas';
+import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
 
-export const projectsRouter = new Hono();
+const projectIdParam = { projectId: z.string().uuid() };
+const orgIdParam = { orgId: z.string().uuid() };
+
+// L6c: shared 400 validation shape { error: { message, issues } } for invalid
+// bodies / params / query (defaultHook) and malformed JSON (onError).
+export const projectsApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
+
+const listProjectsRoute = createRoute({
+  method: 'get',
+  path: '/',
+  responses: {
+    200: {
+      description: 'List the authenticated user\'s default-org projects (or a given org\'s)',
+      content: { 'application/json': { schema: z.array(projectSelectSchema) } },
+    },
+    401: {
+      description: 'Authentication required',
+    },
+  },
+});
 
 // [0.1] Alias GET / — the frontend calls GET /api/v1/projects with no orgId.
 // The org is resolved from the authenticated user's organization membership,
 // and an explicit `?orgId=` query param is honored when present (backwards-compatible).
-projectsRouter.get('/', async (c) => {
-  const userId = c.get('userId');
+projectsApp.openapi(listProjectsRoute, async (c) => {
+  const userId = (c as any).get('userId') as string;
   if (!userId) {
     return c.json({ error: 'Authentication required' }, 401);
   }
@@ -54,13 +91,40 @@ projectsRouter.get('/', async (c) => {
   return c.json(result);
 });
 
-projectsRouter.get('/:orgId/projects', async (c) => {
+const orgProjectsListRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/projects',
+  request: { params: z.object(orgIdParam) },
+  responses: {
+    200: {
+      description: 'List projects for an explicit organization',
+      content: { 'application/json': { schema: z.array(projectSelectSchema) } },
+    },
+  },
+});
+
+projectsApp.openapi(orgProjectsListRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const result = await db.select().from(projects).where(eq(projects.organizationId, orgId));
   return c.json(result);
 });
 
-projectsRouter.post('/:orgId/projects', validateProject, async (c) => {
+const orgProjectsCreateRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/projects',
+  request: {
+    params: z.object(orgIdParam),
+    body: { content: { 'application/json': { schema: projectSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Project created',
+      content: { 'application/json': { schema: projectSelectSchema } },
+    },
+  },
+});
+
+projectsApp.openapi(orgProjectsCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as ProjectInput;
   const [project] = await db.insert(projects).values({
@@ -75,7 +139,22 @@ projectsRouter.post('/:orgId/projects', validateProject, async (c) => {
   return c.json(project, 201);
 });
 
-projectsRouter.get('/:projectId', async (c) => {
+const projectGetRoute = createRoute({
+  method: 'get',
+  path: '/{projectId}',
+  request: { params: z.object(projectIdParam) },
+  responses: {
+    200: {
+      description: 'Project with nested captures',
+      content: { 'application/json': { schema: projectWithCapturesSchema } },
+    },
+    404: {
+      description: 'Project not found',
+    },
+  },
+});
+
+projectsApp.openapi(projectGetRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!project) return c.json({ error: 'Project not found' }, 404);
@@ -152,7 +231,25 @@ async function assembleCaptures(zoneRows: (typeof zones.$inferSelect)[]): Promis
   return captures;
 }
 
-projectsRouter.patch('/:projectId', validateProject, async (c) => {
+const projectPatchRoute = createRoute({
+  method: 'patch',
+  path: '/{projectId}',
+  request: {
+    params: z.object(projectIdParam),
+    body: { content: { 'application/json': { schema: projectSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      description: 'Project updated',
+      content: { 'application/json': { schema: projectSelectSchema } },
+    },
+    404: {
+      description: 'Project not found',
+    },
+  },
+});
+
+projectsApp.openapi(projectPatchRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const input = c.req.valid('json') as ProjectInput;
   const updates: Record<string, unknown> = {};
@@ -171,20 +268,62 @@ projectsRouter.patch('/:projectId', validateProject, async (c) => {
   return c.json(project);
 });
 
-projectsRouter.get('/:projectId/health', async (c) => {
+const projectHealthRoute = createRoute({
+  method: 'get',
+  path: '/{projectId}/health',
+  request: { params: z.object(projectIdParam) },
+  responses: {
+    200: {
+      description: 'Project health summary',
+      content: { 'application/json': { schema: projectHealthSelectSchema } },
+    },
+    404: {
+      description: 'Project not found',
+    },
+  },
+});
+
+projectsApp.openapi(projectHealthRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const [health] = await db.select().from(projectHealthView).where(eq(projectHealthView.projectId, projectId)).limit(1);
   if (!health) return c.json({ error: 'Project not found' }, 404);
   return c.json(health);
 });
 
-projectsRouter.get('/:projectId/zones', async (c) => {
+const projectZonesListRoute = createRoute({
+  method: 'get',
+  path: '/{projectId}/zones',
+  request: { params: z.object(projectIdParam) },
+  responses: {
+    200: {
+      description: 'List project zones',
+      content: { 'application/json': { schema: z.array(zoneSelectSchema) } },
+    },
+  },
+});
+
+projectsApp.openapi(projectZonesListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const result = await db.select().from(zones).where(eq(zones.projectId, projectId));
   return c.json(result);
 });
 
-projectsRouter.post('/:projectId/zones', validateZoneCreate, async (c) => {
+const projectZonesCreateRoute = createRoute({
+  method: 'post',
+  path: '/{projectId}/zones',
+  request: {
+    params: z.object(projectIdParam),
+    body: { content: { 'application/json': { schema: zoneCreateSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Zone created',
+      content: { 'application/json': { schema: zoneSelectSchema } },
+    },
+  },
+});
+
+projectsApp.openapi(projectZonesCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const input = c.req.valid('json') as ZoneCreateInput;
   const [zone] = await db.insert(zones).values({
@@ -196,7 +335,19 @@ projectsRouter.post('/:projectId/zones', validateZoneCreate, async (c) => {
   return c.json(zone, 201);
 });
 
-projectsRouter.get('/:projectId/attendance', async (c) => {
+const projectAttendanceRoute = createRoute({
+  method: 'get',
+  path: '/{projectId}/attendance',
+  request: { params: z.object(projectIdParam) },
+  responses: {
+    200: {
+      description: 'List project attendance logs',
+      content: { 'application/json': { schema: z.array(attendanceLogSelectSchema) } },
+    },
+  },
+});
+
+projectsApp.openapi(projectAttendanceRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const result = await db
     .select({
@@ -215,13 +366,40 @@ projectsRouter.get('/:projectId/attendance', async (c) => {
   return c.json(result);
 });
 
-projectsRouter.get('/:projectId/daily-logs', async (c) => {
+const projectDailyLogsListRoute = createRoute({
+  method: 'get',
+  path: '/{projectId}/daily-logs',
+  request: { params: z.object(projectIdParam) },
+  responses: {
+    200: {
+      description: 'List project daily logs',
+      content: { 'application/json': { schema: z.array(siteDailyLogSelectSchema) } },
+    },
+  },
+});
+
+projectsApp.openapi(projectDailyLogsListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const result = await db.select().from(siteDailyLogs).where(eq(siteDailyLogs.projectId, projectId));
   return c.json(result);
 });
 
-projectsRouter.post('/:projectId/daily-logs', validateSiteDailyLog, async (c) => {
+const projectDailyLogsCreateRoute = createRoute({
+  method: 'post',
+  path: '/{projectId}/daily-logs',
+  request: {
+    params: z.object(projectIdParam),
+    body: { content: { 'application/json': { schema: siteDailyLogSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Daily log created',
+      content: { 'application/json': { schema: siteDailyLogSelectSchema } },
+    },
+  },
+});
+
+projectsApp.openapi(projectDailyLogsCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const input = c.req.valid('json') as SiteDailyLogInput;
   const [log] = await db.insert(siteDailyLogs).values({
@@ -237,13 +415,40 @@ projectsRouter.post('/:projectId/daily-logs', validateSiteDailyLog, async (c) =>
   return c.json(log, 201);
 });
 
-projectsRouter.get('/:projectId/rfis', async (c) => {
+const projectRfisListRoute = createRoute({
+  method: 'get',
+  path: '/{projectId}/rfis',
+  request: { params: z.object(projectIdParam) },
+  responses: {
+    200: {
+      description: 'List project RFIs',
+      content: { 'application/json': { schema: z.array(rfiSelectSchema) } },
+    },
+  },
+});
+
+projectsApp.openapi(projectRfisListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const result = await db.select().from(rfis).where(eq(rfis.projectId, projectId));
   return c.json(result);
 });
 
-projectsRouter.post('/:projectId/rfis', validateRfi, async (c) => {
+const projectRfisCreateRoute = createRoute({
+  method: 'post',
+  path: '/{projectId}/rfis',
+  request: {
+    params: z.object(projectIdParam),
+    body: { content: { 'application/json': { schema: rfiSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'RFI created',
+      content: { 'application/json': { schema: rfiSelectSchema } },
+    },
+  },
+});
+
+projectsApp.openapi(projectRfisCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const input = c.req.valid('json') as RfiInput;
   const [maxRfi] = await db.select({ maxNum: rfis.rfiNumber }).from(rfis).where(eq(rfis.projectId, projectId)).orderBy(desc(rfis.rfiNumber)).limit(1);
@@ -264,13 +469,40 @@ projectsRouter.post('/:projectId/rfis', validateRfi, async (c) => {
   return c.json(rfi, 201);
 });
 
-projectsRouter.get('/:projectId/change-orders', async (c) => {
+const projectChangeOrdersListRoute = createRoute({
+  method: 'get',
+  path: '/{projectId}/change-orders',
+  request: { params: z.object(projectIdParam) },
+  responses: {
+    200: {
+      description: 'List project change orders',
+      content: { 'application/json': { schema: z.array(changeOrderSelectSchema) } },
+    },
+  },
+});
+
+projectsApp.openapi(projectChangeOrdersListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const result = await db.select().from(changeOrders).where(eq(changeOrders.projectId, projectId));
   return c.json(result);
 });
 
-projectsRouter.post('/:projectId/change-orders', validateChangeOrder, async (c) => {
+const projectChangeOrdersCreateRoute = createRoute({
+  method: 'post',
+  path: '/{projectId}/change-orders',
+  request: {
+    params: z.object(projectIdParam),
+    body: { content: { 'application/json': { schema: changeOrderSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Change order created',
+      content: { 'application/json': { schema: changeOrderSelectSchema } },
+    },
+  },
+});
+
+projectsApp.openapi(projectChangeOrdersCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const input = c.req.valid('json') as ChangeOrderInput;
   const [co] = await db.insert(changeOrders).values({
@@ -288,13 +520,40 @@ projectsRouter.post('/:projectId/change-orders', validateChangeOrder, async (c) 
   return c.json(co, 201);
 });
 
-projectsRouter.get('/:projectId/blueprints', async (c) => {
+const projectBlueprintsListRoute = createRoute({
+  method: 'get',
+  path: '/{projectId}/blueprints',
+  request: { params: z.object(projectIdParam) },
+  responses: {
+    200: {
+      description: 'List project blueprint sheets',
+      content: { 'application/json': { schema: z.array(blueprintSheetSelectSchema) } },
+    },
+  },
+});
+
+projectsApp.openapi(projectBlueprintsListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const result = await db.select().from(blueprintSheets).where(eq(blueprintSheets.projectId, projectId));
   return c.json(result);
 });
 
-projectsRouter.post('/:projectId/blueprints', validateBlueprintSheet, async (c) => {
+const projectBlueprintsCreateRoute = createRoute({
+  method: 'post',
+  path: '/{projectId}/blueprints',
+  request: {
+    params: z.object(projectIdParam),
+    body: { content: { 'application/json': { schema: blueprintSheetSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Blueprint sheet created',
+      content: { 'application/json': { schema: blueprintSheetSelectSchema } },
+    },
+  },
+});
+
+projectsApp.openapi(projectBlueprintsCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const input = c.req.valid('json') as BlueprintSheetInput;
   const [sheet] = await db.insert(blueprintSheets).values({

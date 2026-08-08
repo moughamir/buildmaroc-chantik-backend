@@ -1,16 +1,35 @@
-import { Hono } from 'hono';
+import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
+import { z } from 'zod';
 import { db } from '../db';
 import { eq } from 'drizzle-orm';
 import { attendanceLogs } from '../db/schema';
 import {
-  validateAttendanceClockIn,
-  validateAttendanceClockOut,
-} from '../validation/middleware';
+  attendanceClockInSchema,
+  attendanceClockOutSchema,
+  attendanceLogSelectSchema,
+} from '../validation/schemas';
 import type { AttendanceClockInInput, AttendanceClockOutInput } from '../validation/schemas';
+import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
 
-export const attendanceRouter = new Hono();
+// Mounted at /api/v1.
+// L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
+export const attendanceApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
-attendanceRouter.post('/attendance/clock-in', validateAttendanceClockIn, async (c) => {
+const clockInRoute = createRoute({
+  method: 'post',
+  path: '/attendance/clock-in',
+  request: {
+    body: { content: { 'application/json': { schema: attendanceClockInSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Attendance log created (clocked in)',
+      content: { 'application/json': { schema: attendanceLogSelectSchema } },
+    },
+  },
+});
+
+attendanceApp.openapi(clockInRoute, async (c) => {
   const input = c.req.valid('json') as AttendanceClockInInput;
   const [log] = await db.insert(attendanceLogs).values({
     organizationId: input.organizationId,
@@ -24,7 +43,27 @@ attendanceRouter.post('/attendance/clock-in', validateAttendanceClockIn, async (
   return c.json(log, 201);
 });
 
-attendanceRouter.post('/attendance/clock-out', validateAttendanceClockOut, async (c) => {
+const clockOutRoute = createRoute({
+  method: 'post',
+  path: '/attendance/clock-out',
+  request: {
+    body: { content: { 'application/json': { schema: attendanceClockOutSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      description: 'Attendance log updated (clocked out)',
+      content: { 'application/json': { schema: attendanceLogSelectSchema } },
+    },
+    400: {
+      description: 'Already clocked out',
+    },
+    404: {
+      description: 'Attendance log not found',
+    },
+  },
+});
+
+attendanceApp.openapi(clockOutRoute, async (c) => {
   const input = c.req.valid('json') as AttendanceClockOutInput;
   const [log] = await db.select().from(attendanceLogs).where(eq(attendanceLogs.id, input.id)).limit(1);
   if (!log) return c.json({ error: 'Attendance log not found' }, 404);

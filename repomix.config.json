@@ -33,7 +33,11 @@
     "useGitignore": true,
     "useDotIgnore": true,
     "useDefaultPatterns": true,
-    "customPatterns": []
+    "customPatterns": [
+      "bun.lock",
+      "drizzle/**",
+      "**/*.context.xml"
+    ]
   },
   "security": {
     "enableSecurityCheck": true

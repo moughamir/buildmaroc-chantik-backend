@@ -1,31 +1,530 @@
-import { db } from './index';
+import { db, client } from './index';
+import { eq, and } from 'drizzle-orm';
+import { auth } from '../auth';
+import { fakerFR as faker } from '@faker-js/faker';
 import {
   users,
+  userPreferences,
+  userSecurityLogs,
   organizations,
   organizationMembers,
+  organizationInvitations,
+  teams,
+  teamMembers,
+  customRoles,
+  rolePermissions,
+  userRoles,
+  subscriptions,
+  invoices,
+  apiKeys,
+  webhooks,
   projects,
+  projectMembers,
   zones,
   capturePoints,
   panoramas,
   hotspots,
+  auditLogs,
+  workCrews,
+  crewMembers,
+  attendanceLogs,
+  siteDailyLogs,
+  rfis,
+  changeOrders,
+  equipment,
+  blueprintSheets,
   notes,
   tradeCatalog,
   subcontractors,
   pointageRecords,
 } from './schema';
+// @ts-ignore
+import { INITIAL_CHANTIERS } from '../../../frontend/src/data/mockChantiers.ts';
+// @ts-ignore
+import { INITIAL_COMPANY_TRADES, INITIAL_SUBCONTRACTORS } from '../../../frontend/src/data/pointageMockData.ts';
 
 function generateId(): string {
   return crypto.randomUUID();
 }
 
+async function seed() {
+  console.log('🌱 Starting comprehensive Faker-powered database seed...');
+
+  // --- Idempotent Cleanup in Reverse Foreign Key Order ---
+  await db.delete(pointageRecords);
+  await db.delete(subcontractors);
+  await db.delete(tradeCatalog);
+  await db.delete(notes);
+  await db.delete(blueprintSheets);
+  await db.delete(equipment);
+  await db.delete(changeOrders);
+  await db.delete(rfis);
+  await db.delete(siteDailyLogs);
+  await db.delete(attendanceLogs);
+  await db.delete(crewMembers);
+  await db.delete(workCrews);
+  await db.delete(auditLogs);
+  await db.delete(hotspots);
+  await db.delete(panoramas);
+  await db.delete(capturePoints);
+  await db.delete(zones);
+  await db.delete(projectMembers);
+  await db.delete(projects);
+  await db.delete(webhooks);
+  await db.delete(apiKeys);
+  await db.delete(invoices);
+  await db.delete(subscriptions);
+  await db.delete(organizationInvitations);
+  await db.delete(teamMembers);
+  await db.delete(teams);
+  await db.delete(userRoles);
+  await db.delete(rolePermissions);
+  await db.delete(customRoles);
+  await db.delete(organizationMembers);
+  await db.delete(organizations);
+  await db.delete(userSecurityLogs);
+  await db.delete(userPreferences);
+  await db.delete(users);
+  console.log('  🧹 Cleaned all existing tables');
+
+  // --- 1. Users & Preferences & Security Logs ---
+  const userIds: string[] = [];
+  const orgCount = 3;
+  const usersPerOrg = 4;
+
+  for (let i = 0; i < orgCount * usersPerOrg; i++) {
+    const userId = generateId();
+    userIds.push(userId);
+    const firstName = faker.person.firstName();
+    const lastName = faker.person.lastName();
+    const email = faker.internet.email({ firstName, lastName }).toLowerCase();
+
+    await db.insert(users).values({
+      id: userId,
+      email,
+      name: `${firstName} ${lastName}`,
+      image: faker.image.avatar(),
+      role: i === 0 ? 'super-admin' : 'user',
+    } as any);
+
+    await db.insert(userPreferences).values({
+      userId,
+      theme: faker.helpers.arrayElement(['light', 'dark', 'system']),
+      locale: 'fr-FR',
+      timezone: 'Africa/Casablanca',
+      offlineModeDefault: true,
+    } as any);
+
+    await db.insert(userSecurityLogs).values({
+      id: generateId(),
+      userId,
+      event: 'LOGIN_SUCCESS',
+      ipAddress: faker.internet.ip(),
+      userAgent: faker.internet.userAgent(),
+    } as any);
+  }
+  console.log(`  ✅ Seeded ${userIds.length} users with preferences & security logs`);
+
+  // --- 2. Organizations, Subscriptions, Invoices, API Keys, Webhooks ---
+  const orgIds: string[] = [];
+  const orgPlans = ['enterprise', 'pro', 'starter'] as const;
+
+  for (let i = 0; i < orgCount; i++) {
+    const orgId = generateId();
+    orgIds.push(orgId);
+    const companyName = faker.company.name() + ' BTP';
+    const slug = faker.helpers.slugify(companyName).toLowerCase() + '-' + i;
+    const billingEmail = faker.internet.email();
+
+    await db.insert(organizations).values({
+      id: orgId,
+      name: companyName,
+      slug,
+      billingEmail,
+    } as any);
+
+    // Subscription
+    await db.insert(subscriptions).values({
+      id: generateId(),
+      organizationId: orgId,
+      plan: orgPlans[i],
+      status: 'active',
+      maxProjects: i === 0 ? 50 : i === 1 ? 15 : 5,
+      currentPeriodEnd: faker.date.future(),
+    } as any);
+
+    // Invoices
+    await db.insert(invoices).values({
+      id: generateId(),
+      organizationId: orgId,
+      externalId: `inv_${faker.string.alphanumeric(8)}`,
+      amountDue: i === 0 ? 99900 : i === 1 ? 49900 : 19900,
+      amountPaid: i === 0 ? 99900 : i === 1 ? 49900 : 19900,
+      status: 'paid',
+      hostedInvoiceUrl: faker.internet.url(),
+    } as any);
+
+    // API Keys
+    await db.insert(apiKeys).values({
+      id: generateId(),
+      organizationId: orgId,
+      name: 'Production Key',
+      keyHash: faker.string.alphanumeric(64),
+      prefix: 'chk_',
+    } as any);
+
+    // Webhooks
+    await db.insert(webhooks).values({
+      id: generateId(),
+      organizationId: orgId,
+      endpointUrl: faker.internet.url(),
+      secret: faker.string.alphanumeric(32),
+      isActive: true,
+      events: ['project.created', 'hotspot.resolved'],
+    } as any);
+  }
+  console.log('  ✅ Seeded organizations, subscriptions, invoices, API keys, and webhooks');
+
+  // --- 3. Tenant Users Link, Teams & Members ---
+  for (let orgIdx = 0; orgIdx < orgIds.length; orgIdx++) {
+    const orgId = orgIds[orgIdx];
+    const orgUsers = userIds.slice(orgIdx * usersPerOrg, (orgIdx + 1) * usersPerOrg);
+
+    for (let uIdx = 0; uIdx < orgUsers.length; uIdx++) {
+      const userId = orgUsers[uIdx];
+      const role = uIdx === 0 ? 'owner' : uIdx === 1 ? 'admin' : 'member';
+
+      await db.insert(organizationMembers).values({
+        organizationId: orgId,
+        userId,
+        role,
+      } as any);
+    }
+
+    // Teams
+    const teamId = generateId();
+    await db.insert(teams).values({
+      id: teamId,
+      organizationId: orgId,
+      name: `Équipe Terrain ${faker.location.city()}`,
+    } as any);
+
+    await db.insert(teamMembers).values({
+      teamId,
+      userId: orgUsers[1],
+    } as any);
+
+    // Invitations
+    await db.insert(organizationInvitations).values({
+      id: generateId(),
+      organizationId: orgId,
+      email: faker.internet.email(),
+      role: 'member',
+      token: faker.string.alphanumeric(16),
+      status: 'pending',
+      invitedById: orgUsers[0],
+      expiresAt: faker.date.future(),
+    } as any);
+  }
+  console.log('  ✅ Linked tenants with users, teams, and invitations');
+
+  // --- 4. Custom Roles & Permissions ---
+  const primaryOrgId = orgIds[0];
+  const adminUserId = userIds[0];
+  const customRoleId = generateId();
+
+  await db.insert(customRoles).values({
+    id: customRoleId,
+    organizationId: primaryOrgId,
+    name: 'SaaS Platform Superadmin',
+    isSystem: true,
+  } as any);
+
+  const resources = ['project', 'billing', 'team', 'member', 'webhook', 'api_key'] as const;
+  for (const resource of resources) {
+    await db.insert(rolePermissions).values({
+      roleId: customRoleId,
+      resource,
+      action: 'manage',
+    } as any);
+  }
+
+  await db.insert(userRoles).values({
+    userId: adminUserId,
+    roleId: customRoleId,
+    organizationId: primaryOrgId,
+  } as any);
+  console.log('  ✅ Seeded RBAC custom roles and permissions');
+
+  // --- DEV credential user (dev-only; never in production) ---
+  // Lets a human log in with email/password via better-auth during local
+  // development. The org membership row is inserted so /api/v1/projects and
+  // org-scoped routes resolve a default org for this user.
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const devEmail = 'admin@chantik.dev';
+      const devPassword = process.env.DEV_SEED_PASSWORD || 'chantik-dev-2026!';
+
+      const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, devEmail)).limit(1);
+      let devUserId = existing?.id;
+      if (!devUserId) {
+        const signedUp = await auth.api.signUpEmail({
+          body: { email: devEmail, password: devPassword, name: 'Admin Chantik' },
+        });
+        devUserId = signedUp.user.id;
+      }
+
+      await db.update(users).set({ role: 'super-admin' }).where(eq(users.id, devUserId));
+
+      const [existingMember] = await db
+        .select({ id: organizationMembers.id })
+        .from(organizationMembers)
+        .where(and(
+          eq(organizationMembers.userId, devUserId),
+          eq(organizationMembers.organizationId, primaryOrgId),
+        ))
+        .limit(1);
+      if (!existingMember) {
+        await db.insert(organizationMembers).values({
+          organizationId: primaryOrgId,
+          userId: devUserId,
+          role: 'owner',
+        });
+      }
+      console.log(`  ✅ Seeded dev credential user ${devEmail} (password: ${devPassword})`);
+    } catch (err) {
+      console.error('  ⚠️ Dev credential seed skipped:', err);
+    }
+  }
+
+  // --- 5. Trade Catalog ---
+  for (const trade of INITIAL_COMPANY_TRADES) {
+    const tradeId = generateId();
+    await db.insert(tradeCatalog).values({
+      id: tradeId,
+      name: trade.name,
+      category: trade.category || 'Métiers',
+      icon: trade.icon || null,
+      description: trade.description || trade.notes || null,
+    } as any);
+  }
+  console.log(`  ✅ Seeded trade catalog (${INITIAL_COMPANY_TRADES.length} trades)`);
+
+  // --- 6. Projects, Zones, Panoramas, Hotspots, Equipment, RFIs, COs, Crews, Attendance, Audit Logs ---
+  for (let orgIdx = 0; orgIdx < orgIds.length; orgIdx++) {
+    const orgId = orgIds[orgIdx];
+    const orgUsers = userIds.slice(orgIdx * usersPerOrg, (orgIdx + 1) * usersPerOrg);
+    const primaryManagerId = orgUsers[0];
+
+    const chantiersToSeed = INITIAL_CHANTIERS.slice(0, 1);
+
+    for (const chantier of chantiersToSeed) {
+      const projectId = generateId();
+      const startDate = parseFrenchDate(chantier.startDate);
+      const expectedEndDate = parseFrenchDate(chantier.expectedEndDate);
+
+      await db.insert(projects).values({
+        id: projectId,
+        organizationId: orgId,
+        name: chantier.name,
+        code: `${faker.string.alpha(3).toUpperCase()}-${faker.string.numeric(3)}`,
+        region: chantier.location,
+        coordinates: { lng: chantier.lng, lat: chantier.lat },
+        status: mapOperationalStatusToLifecycle(chantier.status),
+        operationalStatus: chantier.status,
+        managerUserId: primaryManagerId,
+        budgetCents: parseBudget(chantier.budget) ?? 10000000,
+        spentProgress: chantier.spentProgress,
+        surfaceSqm: parseSurface(chantier.surface) ?? 2000,
+        workersCount: chantier.workersCount,
+        complianceScore: parseComplianceScore(chantier.complianceScore) ?? 95,
+        scheduleDeltaDays: parseScheduleDelta(chantier.scheduleAhead) ?? 0,
+        startDate: startDate ?? new Date(),
+        expectedEndDate: expectedEndDate ?? new Date(),
+      } as any);
+
+      // Project Members
+      await db.insert(projectMembers).values({
+        projectId,
+        userId: primaryManagerId,
+        projectRole: 'project_manager',
+      } as any);
+
+      // Equipment
+      await db.insert(equipment).values({
+        id: generateId(),
+        organizationId: orgId,
+        currentProjectId: projectId,
+        name: `Grue ${faker.word.sample()}`,
+        serialNumber: faker.string.alphanumeric(10),
+        category: 'Lifting',
+        status: 'in_use',
+      } as any);
+
+      // Blueprint Sheets
+      await db.insert(blueprintSheets).values({
+        id: generateId(),
+        projectId,
+        sheetNumber: 'A-101',
+        title: 'Plan Architectonique R+4',
+        version: 1,
+        storagePath: `blueprints/${projectId}/A-101.pdf`,
+        uploadedById: primaryManagerId,
+      } as any);
+
+      // RFIs & Change Orders
+      await db.insert(rfis).values({
+        id: generateId(),
+        projectId,
+        rfiNumber: 1,
+        title: 'Validation fondations radier',
+        question: 'Validation du dosage béton B35 par le bureau de contrôle.',
+        status: 'answered',
+        createdById: primaryManagerId,
+      } as any);
+
+      await db.insert(changeOrders).values({
+        id: generateId(),
+        projectId,
+        coNumber: 'CO-01',
+        title: 'Ajout niveau sous-sol supplémentaire',
+        description: 'Demande client suite étude géotechnique.',
+        costImpactCents: 2500000,
+        scheduleImpactDays: 14,
+        status: 'approved',
+        requestedById: primaryManagerId,
+      } as any);
+
+      // Subcontractors
+      const subs = INITIAL_SUBCONTRACTORS[chantier.id] || [];
+      for (const sub of subs) {
+        await db.insert(subcontractors).values({
+          id: generateId(),
+          projectId,
+          company: sub.company,
+          specialty: sub.trade || 'Général',
+        } as any);
+      }
+
+      // Zones & Captures
+      for (const capture of chantier.captures) {
+        for (const zone of capture.zones) {
+          const zoneId = generateId();
+          await db.insert(zones).values({
+            id: zoneId,
+            projectId,
+            name: zone.name,
+            level: zone.type,
+          } as any);
+
+          const cpId = generateId();
+          await db.insert(capturePoints).values({
+            id: cpId,
+            zoneId,
+            title: `${capture.week} - ${zone.name}`,
+          } as any);
+
+          const panoramaId = generateId();
+          await db.insert(panoramas).values({
+            id: panoramaId,
+            capturePointId: cpId,
+            storagePath: `panoramas/${chantier.code}/${capture.id}/${zone.id}.jpg`,
+            capturedAt: parseFrenchDate(capture.date) ?? new Date(),
+            uploadedById: primaryManagerId,
+            metadata: {
+              week: capture.week,
+              progress: capture.progress,
+              operator: capture.operator,
+              note: capture.note,
+            },
+          } as any);
+
+          for (const hotspot of capture.hotspots) {
+            await db.insert(hotspots).values({
+              id: generateId(),
+              panoramaId,
+              pitch: hotspot.pitch,
+              yaw: hotspot.yaw,
+              title: hotspot.title,
+              description: hotspot.text,
+              status: 'pending',
+            } as any);
+          }
+        }
+      }
+
+      // Work Crews & Attendance Logs & Daily Logs
+      const crewId = generateId();
+      await db.insert(workCrews).values({
+        id: crewId,
+        organizationId: orgId,
+        projectId,
+        name: 'Brigade Béton Armé',
+        trade: 'Gros Œuvre',
+        teamLeadId: primaryManagerId,
+      } as any);
+
+      await db.insert(crewMembers).values({
+        crewId,
+        userId: orgUsers[1],
+      } as any);
+
+      await db.insert(attendanceLogs).values({
+        id: generateId(),
+        organizationId: orgId,
+        userId: orgUsers[1],
+        projectId,
+        clockInAt: new Date(),
+        clockInMethod: 'gps_geofence',
+        status: 'clocked_in',
+      } as any);
+
+      await db.insert(siteDailyLogs).values({
+        id: generateId(),
+        projectId,
+        submittedById: primaryManagerId,
+        logDate: new Date(),
+        weatherConditions: 'Ensoleillé 25°C',
+        workSummary: 'Coulage radier et ferraillage zone B.',
+        safetyIncidentsReported: false,
+      } as any);
+
+      // Audit Logs
+      await db.insert(auditLogs).values({
+        id: generateId(),
+        organizationId: orgId,
+        userId: primaryManagerId,
+        action: 'PROJECT_CREATED',
+        entityType: 'project',
+        entityId: projectId,
+        payload: { name: chantier.name },
+      } as any);
+
+      // Notes
+      await db.insert(notes).values({
+        id: generateId(),
+        projectId,
+        createdById: primaryManagerId,
+        content: `Note de suivi de chantier pour ${chantier.name}. Avancement conforme aux prévisions.`,
+      } as any);
+    }
+  }
+
+  console.log('  ✅ Seeded all projects, equipment, RFIs, change orders, workforce crews, and audit logs');
+  console.log('🌱 Comprehensive Faker database seed completed successfully!');
+  await client.end();
+}
+
+seed().catch((err) => {
+  console.error('❌ Database seed failed:', err);
+  process.exit(1);
+});
+
+// Helper parsers
 function parseFrenchDate(dateStr: string): Date | null {
   const monthsFR = [
     'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
     'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
-  ];
-  const monthsEN = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
   const match = dateStr.match(/(\d{2})\s+(\w+\.?)\s+(\d{4})/);
   if (!match) return null;
@@ -70,440 +569,3 @@ function mapOperationalStatusToLifecycle(status: string): string {
     default: return 'planning';
   }
 }
-
-async function seed() {
-  console.log('🌱 Starting database seed...');
-
-  // --- Organization ---
-  const orgId = generateId();
-  await db.insert(organizations).values({
-    id: orgId,
-    name: 'BuildMaroc',
-    slug: 'buildmaroc',
-    billingEmail: 'admin@buildmaroc.ma',
-  });
-  console.log('  ✅ Organization created');
-
-  // --- Default User ---
-  const userId = generateId();
-  await db.insert(users).values({
-    id: userId,
-    email: 'admin@buildmaroc.ma',
-    fullName: 'Admin BuildMaroc',
-    avatarUrl: null,
-  });
-  console.log('  ✅ Default user created');
-
-  // --- Organization Member (owner) ---
-  await db.insert(organizationMembers).values({
-    organizationId: orgId,
-    userId,
-    role: 'owner',
-  });
-  console.log('  ✅ Organization member created');
-
-  // --- Projects (from INITIAL_CHANTIERS) ---
-  const chantierData = [
-    {
-      id: 'chk-001',
-      code: 'CAS-2026-01',
-      name: 'Résidence Al Amal',
-      location: 'Casablanca',
-      address: 'Bd Zerktouni, Maarif, Casablanca',
-      lat: 33.589886,
-      lng: -7.632512,
-      status: 'en_cours' as const,
-      progress: 92,
-      budget: '42 500 000 MAD',
-      spentProgress: 88,
-      surface: '14 200 m²',
-      workersCount: 48,
-      complianceScore: '98.5%',
-      scheduleAhead: '+3 jours d\'avance',
-      startDate: '15 Jan 2026',
-      expectedEndDate: '15 Déc 2026',
-      type: 'Résidentiel (R+4)',
-      manager: { name: 'Ahmed Benali', role: 'Chef de Projet Senior', phone: '+212 6 61 23 45 67', email: 'a.benali@buildmaroc.ma', avatar: 'AB' },
-      weather: 'Casablanca • 24°C Ensoleillé',
-      captures: [
-        {
-          id: 'cap-sem-01',
-          week: 'Semaine 01',
-          date: '15 Jan 2026',
-          progress: 5,
-          operator: 'Ahmed Benali',
-          note: 'Phase terrassement & fondations. Coulage du radier principal.',
-          hotspots: [
-            { pitch: -10, yaw: -25, title: 'Coulage Radier Béton B35', text: 'Résistance 35 MPa contrôlée conforme par LPEE.' },
-            { pitch: 15, yaw: 45, title: 'Base Grue à Tour G1', text: 'Ancrage sur massif béton armé validé 45m.' },
-          ],
-          zones: [
-            { id: 'complet', name: 'Chantier complet', type: 'complet', pitch: 0, yaw: 0 },
-            { id: 'etage1', name: '1er étage', type: 'etage1', pitch: 0, yaw: 30 },
-            { id: 'balcon', name: 'Balcon & Façade', type: 'balcon', pitch: -5, yaw: 60 },
-          ],
-        },
-        {
-          id: 'cap-sem-20',
-          week: 'Semaine 20',
-          date: '02 Juin 2026',
-          progress: 48,
-          operator: 'Karim Tazi',
-          note: 'Élévation structure R+4. Poteaux béton et maçonnerie de briques rouges.',
-          hotspots: [
-            { pitch: 5, yaw: -15, title: 'Voiles Béton Armé R+2', text: 'Ferraillage haute adhérence FeE500 conforme.' },
-            { pitch: -5, yaw: 35, title: 'Maçonnerie Briques Rouges 20cm', text: 'Joints mortier ciment d\'épaisseur réglementaire.' },
-          ],
-          zones: [
-            { id: 'complet', name: 'Chantier complet', type: 'complet', pitch: 0, yaw: 0 },
-            { id: 'etage1', name: '1er étage', type: 'etage1', pitch: 0, yaw: 30 },
-            { id: 'balcon', name: 'Balcon & Façade', type: 'balcon', pitch: -5, yaw: 60 },
-          ],
-        },
-        {
-          id: 'cap-sem-40',
-          week: 'Semaine 40',
-          date: '20 Nov 2026',
-          progress: 92,
-          operator: 'Ahmed Benali',
-          note: 'Enduit de façade achevé. Menuiserie aluminium et finitions intérieures.',
-          hotspots: [
-            { pitch: -2, yaw: -30, title: 'Menuiserie Aluminium RPT', text: 'Double vitrage 6/12/6 étanchéité à l\'air A4.' },
-            { pitch: 8, yaw: 40, title: 'Enduit Monocouche Hydrofuge', text: 'Finition talochée ton pierre conforme aux exigences.' },
-          ],
-          zones: [
-            { id: 'complet', name: 'Chantier complet', type: 'complet', pitch: 0, yaw: 0 },
-            { id: 'etage1', name: '1er étage', type: 'etage1', pitch: 0, yaw: 30 },
-            { id: 'balcon', name: 'Balcon & Façade', type: 'balcon', pitch: -5, yaw: 60 },
-          ],
-        },
-      ],
-      notes: [
-        { id: 'note-101', text: 'Livraison des baies vitrées aluminium pour la façade principale effectuée.', author: 'Ahmed Benali', date: '20 Nov 2026 - 14:30', priority: 'normal' as const },
-        { id: 'note-102', text: 'Contrôle d\'étanchéité des terrasses du 4ème étage validé avec succès.', author: 'Karim Tazi', date: '18 Nov 2026 - 11:15', priority: 'normal' as const },
-      ],
-    },
-    {
-      id: 'chk-002',
-      code: 'BOU-2026-04',
-      name: 'Villa Bouskoura Golf',
-      location: 'Bouskoura',
-      address: 'Ville Verte, Bouskoura',
-      lat: 33.452120,
-      lng: -7.653410,
-      status: 'en_cours' as const,
-      progress: 34,
-      budget: '18 800 000 MAD',
-      spentProgress: 38,
-      surface: '1 850 m²',
-      workersCount: 22,
-      complianceScore: '100%',
-      scheduleAhead: 'Dans les temps',
-      startDate: '10 Mar 2025',
-      expectedEndDate: '15 Fév 2027',
-      type: 'Villa Haut Standing',
-      manager: { name: 'Youssef El Amrani', role: 'Conducteur de Travaux', phone: '+212 6 62 98 76 54', email: 'y.amrani@buildmaroc.ma', avatar: 'YA' },
-      weather: 'Bouskoura • 25°C Ensoleillé',
-      captures: [
-        {
-          id: 'cap-sem-01',
-          week: 'Semaine 01',
-          date: '12 Juil 2026',
-          progress: 10,
-          operator: 'Youssef El Amrani',
-          note: 'Superstructure rez-de-chaussée',
-          hotspots: [],
-          zones: [
-            { id: 'complet', name: 'Chantier complet', type: 'complet' },
-            { id: 'etage1', name: '1er étage', type: 'etage1' },
-            { id: 'balcon', name: 'Balcon & Façade', type: 'balcon' },
-          ],
-        },
-        {
-          id: 'cap-sem-20',
-          week: 'Semaine 20',
-          date: '19 Juil 2026',
-          progress: 34,
-          operator: 'Youssef El Amrani',
-          note: 'Charpente métallique et baies vitrées',
-          hotspots: [],
-          zones: [
-            { id: 'complet', name: 'Chantier complet', type: 'complet' },
-            { id: 'etage1', name: '1er étage', type: 'etage1' },
-            { id: 'balcon', name: 'Balcon & Façade', type: 'balcon' },
-          ],
-        },
-      ],
-      notes: [
-        { id: 'note-201', text: 'Vérifier l\'avancement du gros œuvre et la livraison de la charpente.', author: 'Youssef El Amrani', date: '31 Juil 2026 - 09:00', priority: 'normal' as const },
-      ],
-    },
-    {
-      id: 'chk-003',
-      code: 'RAB-2025-09',
-      name: 'Immeuble Atlas Tower',
-      location: 'Rabat',
-      address: 'Avenue Annakhil, Hay Riad, Rabat',
-      lat: 33.965410,
-      lng: -6.879540,
-      status: 'en_retard' as const,
-      progress: 12,
-      budget: '85 000 000 MAD',
-      spentProgress: 18,
-      surface: '28 500 m²',
-      workersCount: 65,
-      complianceScore: '92%',
-      scheduleAhead: '-12 jours de retard',
-      startDate: '01 Mai 2025',
-      expectedEndDate: '30 Juin 2027',
-      type: 'Bureaux (R+12)',
-      manager: { name: 'Rachid Kabbaj', role: 'Directeur de Chantier', phone: '+212 6 63 11 22 33', email: 'r.kabbaj@buildmaroc.ma', avatar: 'RK' },
-      weather: 'Rabat • 23°C Nuageux',
-      captures: [
-        {
-          id: 'cap-sem-01',
-          week: 'Semaine 01',
-          date: '05 Juil 2026',
-          progress: 12,
-          operator: 'Rachid Kabbaj',
-          note: 'Forage des pieux de fondation',
-          hotspots: [],
-          zones: [
-            { id: 'complet', name: 'Chantier complet', type: 'complet' },
-          ],
-        },
-      ],
-      notes: [
-        { id: 'note-301', text: 'Retard accumulé sur les pieux de fondation en raison d\'un sol rocheux.', author: 'Rachid Kabbaj', date: '31 Juil 2026 - 16:10', priority: 'high' as const },
-      ],
-    },
-  ];
-
-  const projectIds: Record<string, string> = {};
-  const zoneIds: Record<string, Record<string, string>> = {};
-  const capturePointIds: Record<string, Record<string, string>> = {};
-  const panoramaIds: Record<string, Record<string, string>> = {};
-
-  for (const chantier of chantierData) {
-    const projectId = generateId();
-    projectIds[chantier.id] = projectId;
-
-    const startDate = parseFrenchDate(chantier.startDate);
-    const expectedEndDate = parseFrenchDate(chantier.expectedEndDate);
-
-    await db.insert(projects).values({
-      id: projectId,
-      organizationId: orgId,
-      name: chantier.name,
-      code: chantier.code,
-      region: chantier.location,
-      coordinates: { lng: chantier.lng, lat: chantier.lat },
-      status: mapOperationalStatusToLifecycle(chantier.status),
-      operationalStatus: chantier.status,
-      managerUserId: userId,
-      budgetCents: parseBudget(chantier.budget) ?? null,
-      spentProgress: chantier.spentProgress,
-      surfaceSqm: parseSurface(chantier.surface) ?? null,
-      workersCount: chantier.workersCount,
-      complianceScore: parseComplianceScore(chantier.complianceScore) ?? null,
-      scheduleDeltaDays: parseScheduleDelta(chantier.scheduleAhead) ?? null,
-      startDate: startDate ?? null,
-      expectedEndDate: expectedEndDate ?? null,
-    });
-    console.log(`  ✅ Project created: ${chantier.name}`);
-
-    // --- Zones ---
-    zoneIds[chantier.id] = {};
-    capturePointIds[chantier.id] = {};
-    panoramaIds[chantier.id] = {};
-
-    for (const capture of chantier.captures) {
-      for (const zone of capture.zones) {
-        const zoneId = generateId();
-        zoneIds[chantier.id][zone.id] = zoneId;
-
-        await db.insert(zones).values({
-          id: zoneId,
-          projectId,
-          name: zone.name,
-          level: zone.type,
-        });
-
-        // --- Capture Point ---
-        const cpId = generateId();
-        capturePointIds[chantier.id][`${capture.id}-${zone.id}`] = cpId;
-
-        await db.insert(capturePoints).values({
-          id: cpId,
-          zoneId,
-          title: `${capture.week} - ${zone.name}`,
-        });
-
-        // --- Panorama ---
-        const panoramaId = generateId();
-        panoramaIds[chantier.id][`${capture.id}-${zone.id}`] = panoramaId;
-
-        await db.insert(panoramas).values({
-          id: panoramaId,
-          capturePointId: cpId,
-          storagePath: `panoramas/${chantier.code}/${capture.id}/${zone.id}.jpg`,
-          capturedAt: parseFrenchDate(capture.date) ?? new Date(),
-          uploadedById: userId,
-          metadata: {
-            week: capture.week,
-            progress: capture.progress,
-            operator: capture.operator,
-            note: capture.note,
-          },
-        });
-
-        // --- Hotspots ---
-        for (const hotspot of capture.hotspots) {
-          await db.insert(hotspots).values({
-            id: generateId(),
-            panoramaId,
-            pitch: hotspot.pitch,
-            yaw: hotspot.yaw,
-            title: hotspot.title,
-            description: hotspot.text,
-            status: 'pending',
-          });
-        }
-      }
-    }
-
-    // --- Notes ---
-    for (const note of chantier.notes) {
-      await db.insert(notes).values({
-        id: generateId(),
-        projectId,
-        createdById: userId,
-        content: note.text,
-      });
-    }
-  }
-  console.log('  ✅ Zones, capture points, panoramas, hotspots, and notes created');
-
-  // --- Trade Catalog (from PREDEFINED_TRADE_CATALOG) ---
-  const tradeCatalogData = [
-    { id: 'cat-chef', name: 'Chef de chantier', category: 'Encadrement', icon: 'chef', description: 'Direction opérationnelle et organisation quotidienne du chantier' },
-    { id: 'cat-chef-equipe', name: "Chef d'équipe", category: 'Encadrement', icon: 'chef_equipe', description: 'Encadrement direct des équipes d\'exécution sur le terrain' },
-    { id: 'cat-cond-travaux', name: 'Conducteur de travaux', category: 'Encadrement', icon: 'conducteur_travaux', description: 'Gestion administrative, technique et financière du chantier' },
-    { id: 'cat-macon', name: 'Maçon', category: 'Gros Œuvre & Structure', icon: 'macon', description: 'Élévation de structures, bloc baies, parpaings, voiles béton et chapes' },
-    { id: 'cat-coffreur', name: 'Coffreur / Boiseur', category: 'Gros Œuvre & Structure', icon: 'coffreur', description: 'Montage et assemblage des coffrages bois/métalliques pour béton armé' },
-    { id: 'cat-ferrailleur', name: 'Ferrailleur', category: 'Gros Œuvre & Structure', icon: 'ferrailleur', description: 'Façonnage, ligaturage et pose des armatures métalliques' },
-    { id: 'cat-manoeuvre', name: 'Manœuvre', category: 'Gros Œuvre & Structure', icon: 'manoeuvre', description: 'Aide générale, approvisionnement des postes et soutien aux ouvriers qualifiés' },
-    { id: 'cat-conducteur-engins', name: 'Conducteur d\'engins', category: 'Levage & Matériel', icon: 'engins', description: 'Conduite des pelles, bulldozers, chargeuses et dumper' },
-    { id: 'cat-grutier', name: 'Grutier', category: 'Levage & Matériel', icon: 'grutier', description: 'Pilotage de la grue à tour et gestion sécurisée des charges' },
-    { id: 'cat-chauffeur', name: 'Chauffeur', category: 'Levage & Matériel', icon: 'chauffeur', description: 'Conduite de camion toupie, plateau et poids lourds de livraison' },
-    { id: 'cat-elingueur', name: 'Élingueur / Rigging worker', category: 'Levage & Matériel', icon: 'elingueur', description: 'Accrochage des charges, contrôle des élingues et guidage' },
-    { id: 'cat-signalman', name: 'Signalman / Banksman', category: 'Levage & Matériel', icon: 'signalman', description: 'Guidage visuel et radio des manœuvres d\'engins et de grue' },
-    { id: 'cat-elec', name: 'Électricien', category: 'Fluides & Énergie', icon: 'elec', description: 'Tirage de câbles, armoires TGBT et raccordements électriques' },
-    { id: 'cat-plombier', name: 'Plombier', category: 'Fluides & Énergie', icon: 'plombier', description: 'Installation des réseaux hydrauliques, évacuation et sanitaires' },
-    { id: 'cat-soudeur', name: 'Soudeur', category: 'Fluides & Énergie', icon: 'soudeur', description: 'Soudure haute pression et assemblage tuyauterie/charpente' },
-    { id: 'cat-etancheur', name: 'Étancheur', category: 'Enveloppe du Bâtiment', icon: 'etancheur', description: 'Pose de membranes bitumineuses et étanchéité de toitures/terrasses' },
-    { id: 'cat-facadier', name: 'Façadier', category: 'Enveloppe du Bâtiment', icon: 'facadier', description: 'Pose de système ITE, enduits projetés et revêtement de façade' },
-    { id: 'cat-peintre', name: 'Peintre', category: 'Second Œuvre & Finition', icon: 'peintre', description: 'Préparation des supports, impression et application de peintures' },
-    { id: 'cat-carreleur', name: 'Carreleur', category: 'Second Œuvre & Finition', icon: 'carreleur', description: 'Pose de carrelage sol, faïence murale et réalisation de sous-couches' },
-    { id: 'cat-plaquiste', name: 'Plaquiste', category: 'Second Œuvre & Finition', icon: 'plaquiste', description: 'Montage de cloisons BA13, faux-plafonds et isolation thermique' },
-    { id: 'cat-menuisier-alu', name: 'Menuisier aluminium', category: 'Second Œuvre & Finition', icon: 'menuisier_alu', description: 'Pose des châssis alu, murs rideaux et verrières' },
-    { id: 'cat-menuisier-bois', name: 'Menuisier bois', category: 'Second Œuvre & Finition', icon: 'menuisier_bois', description: 'Pose de bloc-portes bois, parquets et boiseries d\'intérieur' },
-    { id: 'cat-serrurier', name: 'Serrurier', category: 'Second Œuvre & Finition', icon: 'serrurier', description: 'Pose de garde-corps, grilles, serrures et serrurerie métallique' },
-    { id: 'cat-vitrier', name: 'Vitrier', category: 'Second Œuvre & Finition', icon: 'vitrier', description: 'Installation des vitrages simples/doubles et baies vitrées' },
-    { id: 'cat-echafaudeur', name: 'Échafaudeur', category: 'Second Œuvre & Finition', icon: 'echafaudeur', description: 'Montage, ancrage et contrôle des échafaudages fixes et roulants' },
-    { id: 'cat-geometre', name: 'Géomètre', category: 'Ingénierie & Contrôle', icon: 'geometre', description: 'Implantation topographique des axes, niveaux et bornages' },
-    { id: 'cat-topographe', name: 'Topographe', category: 'Ingénierie & Contrôle', icon: 'topographe', description: 'Levé altimétrique, récolement et suivi d\'implantation' },
-    { id: 'cat-laborantin', name: 'Laborantin', category: 'Ingénierie & Contrôle', icon: 'laborantin', description: 'Essais béton (écrasement d\'éprouvettes), contrôle compactage sols' },
-    { id: 'cat-magasinier', name: 'Magasinier', category: 'Logistique & Support', icon: 'magasinier', description: 'Gestion du dépôt, réception des matériaux et suivi de stock' },
-    { id: 'cat-logisticien', name: 'Logisticien', category: 'Logistique & Support', icon: 'logisticien', description: 'Planification des livraisons et flux de circulation du chantier' },
-    { id: 'cat-mecanicien', name: 'Mécanicien d\'engins', category: 'Logistique & Support', icon: 'mecanicien', description: 'Entretien préventif et dépannage du parc d\'engins de chantier' },
-    { id: 'cat-hse', name: 'Agent HSE / Safety Officer', category: 'Logistique & Support', icon: 'hse', description: 'Contrôle des consignes de sécurité, EPI et prévention des risques' },
-    { id: 'cat-gardien', name: 'Gardien / Security Guard', category: 'Logistique & Support', icon: 'gardien', description: 'Surveillance nocturne, filtrage des accès et protection des biens' },
-    { id: 'cat-nettoyage', name: 'Agent de nettoyage', category: 'Logistique & Support', icon: 'nettoyage', description: 'Nettoyage continu des zones de travail, repli et propreté du site' },
-  ];
-
-  for (const trade of tradeCatalogData) {
-    await db.insert(tradeCatalog).values({
-      id: generateId(),
-      name: trade.name,
-      category: trade.category,
-      icon: trade.icon,
-      description: trade.description,
-    });
-  }
-  console.log(`  ✅ Trade catalog seeded (${tradeCatalogData.length} entries)`);
-
-  // --- Subcontractors + Pointage Records ---
-  const subcontractorData = [
-    { id: 'sub-atlas', company: 'Atlas Construction', specialty: 'Gros œuvre & Maçonnerie', trades: [
-      { id: 'subtrd-atlas-1', name: 'Maçons', category: 'Gros Œuvre', icon: 'macon', count: 10 },
-      { id: 'subtrd-atlas-2', name: 'Coffreurs / Boiseurs', category: 'Structure', icon: 'coffreur', count: 4 },
-    ]},
-    { id: 'sub-beton', company: 'Béton Express', specialty: 'Coulage & Toupies', trades: [
-      { id: 'subtrd-beton-1', name: 'Chauffeurs / Engins', category: 'Logistique', icon: 'chauffeur', count: 6 },
-    ]},
-    { id: 'sub-decobat', company: 'DecoBat', specialty: 'Peinture & Façade', trades: [
-      { id: 'subtrd-decobat-1', name: 'Peintres / Applicateurs', category: 'Finition & Revêtement', icon: 'peintre', count: 4 },
-    ]},
-  ];
-
-  const companyTradesData = [
-    { id: 'trd-macon', name: 'Maçons', category: 'Gros Œuvre', icon: 'macon', count: 12 },
-    { id: 'trd-coffreur', name: 'Coffreurs / Boiseurs', category: 'Structure', icon: 'coffreur', count: 8 },
-    { id: 'trd-ferrailleur', name: 'Ferrailleurs', category: 'Structure', icon: 'ferrailleur', count: 6 },
-    { id: 'trd-manoeuvre', name: 'Manœuvres', category: 'Gros Œuvre', icon: 'manoeuvre', count: 5 },
-    { id: 'trd-chauffeur', name: 'Chauffeurs / Toupie', category: 'Logistique', icon: 'chauffeur', count: 3 },
-    { id: 'trd-elec', name: 'Électriciens', category: 'Second Œuvre', icon: 'elec', count: 4 },
-    { id: 'trd-plombier', name: 'Plombiers / Tuyauteurs', category: 'Second Œuvre', icon: 'plombier', count: 3 },
-  ];
-
-  // Seed subcontractors and pointage records for each project
-  for (const chantier of chantierData) {
-    const projectId = projectIds[chantier.id];
-    if (!projectId) continue;
-
-    // Company trades as pointage records
-    for (const trade of companyTradesData) {
-      await db.insert(pointageRecords).values({
-        id: generateId(),
-        projectId,
-        date: new Date(),
-        tradeId: null,
-        count: trade.count,
-        isCompanyTrade: 1,
-        subcontractorId: null,
-      });
-    }
-
-    // Subcontractors and their trades
-    for (const sub of subcontractorData) {
-      const subId = generateId();
-      await db.insert(subcontractors).values({
-        id: subId,
-        projectId,
-        company: sub.company,
-        specialty: sub.specialty,
-      });
-
-      for (const trade of sub.trades) {
-        await db.insert(pointageRecords).values({
-          id: generateId(),
-          projectId,
-          date: new Date(),
-          tradeId: null,
-          count: trade.count,
-          isCompanyTrade: 0,
-          subcontractorId: subId,
-        });
-      }
-    }
-  }
-  console.log('  ✅ Subcontractors and pointage records seeded');
-
-  console.log('🌱 Database seed complete!');
-}
-
-seed().catch((err) => {
-  console.error('❌ Seed failed:', err);
-  process.exit(1);
-});

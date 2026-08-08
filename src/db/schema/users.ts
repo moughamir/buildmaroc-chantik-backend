@@ -3,11 +3,14 @@ import { pgTable, uuid, text, timestamp, varchar, boolean, index } from 'drizzle
 import { authenticatedRole } from './enums';
 
 export const users = pgTable('users', {
-  id: uuid('id').primaryKey(), 
+  id: uuid('id').primaryKey(),
   email: text('email').notNull().unique(),
-  fullName: text('full_name'),
-  avatarUrl: text('avatar_url'),
+  name: text('full_name'),
+  image: text('avatar_url'),
+  emailVerified: boolean('email_verified').notNull().default(false),
+  role: text('role').notNull().default('user'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const userPreferences = pgTable('user_preferences', {

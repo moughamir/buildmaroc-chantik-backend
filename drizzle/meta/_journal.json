@@ -8,6 +8,13 @@
       "when": 1786025142530,
       "tag": "0000_handy_korath",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786108727694,
+      "tag": "0001_colorful_black_tom",
+      "breakpoints": true
     }
   ]
 }

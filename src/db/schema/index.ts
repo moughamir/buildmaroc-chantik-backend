@@ -1,6 +1,7 @@
 export { authenticatedRole, orgRoleEnum, inviteStatusEnum, subscriptionPlanEnum, projectStatusEnum, projectRoleEnum, hotspotStatusEnum, webhookEventEnum, permissionActionEnum, resourceTypeEnum, shiftStatusEnum, attendanceMethodEnum, rfiStatusEnum, changeOrderStatusEnum, equipmentStatusEnum, operationalStatusEnum } from './enums';
 export { geometryPoint } from './types';
 export { users, userPreferences, userSecurityLogs } from './users';
+export { sessions, accounts } from './auth';
 export { organizations, organizationMembers, organizationInvitations, teams, teamMembers } from './organizations';
 export { customRoles, rolePermissions, userRoles } from './rbac';
 export { subscriptions, invoices, apiKeys, webhooks } from './billing';

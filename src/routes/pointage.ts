@@ -1,17 +1,40 @@
-import { Hono } from 'hono';
+import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
+import { z } from 'zod';
 import { db } from '../db';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { pointageRecords, tradeCatalog, subcontractors } from '../db/schema';
 import {
-  validatePointageRecordCreate,
-  validatePointageRecordUpdate,
-  validatePointageQuery,
-} from '../validation/middleware';
+  pointageRecordCreateSchema,
+  pointageRecordUpdateSchema,
+  pointageQuerySchema,
+  pointageRecordSelectSchema,
+  tradeCatalogSelectSchema,
+  deletedResponseSchema,
+} from '../validation/schemas';
 import type { PointageRecordCreateInput, PointageRecordUpdateInput, PointageQueryInput } from '../validation/schemas';
+import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
 
-export const pointageRouter = new Hono();
+// Mounted at /api/v1.
+// L6c: shared 400 validation shape { error: { message, issues } } for invalid
+// bodies / params / query (defaultHook) and malformed JSON (onError).
+export const pointageApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
-pointageRouter.get('/projects/:projectId/pointage', validatePointageQuery, async (c) => {
+const pointageListRoute = createRoute({
+  method: 'get',
+  path: '/projects/{projectId}/pointage',
+  request: {
+    params: z.object({ projectId: z.string().uuid() }),
+    query: pointageQuerySchema,
+  },
+  responses: {
+    200: {
+      description: 'List pointage records for a project and date',
+      content: { 'application/json': { schema: z.array(pointageRecordSelectSchema) } },
+    },
+  },
+});
+
+pointageApp.openapi(pointageListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const query = c.req.valid('query') as PointageQueryInput;
   const dateFilter = query.date ? new Date(query.date) : new Date();
@@ -28,21 +51,57 @@ pointageRouter.get('/projects/:projectId/pointage', validatePointageQuery, async
   return c.json(result);
 });
 
-pointageRouter.post('/projects/:projectId/pointage', validatePointageRecordCreate, async (c) => {
-  const projectId = c.req.param('projectId');
+const pointageCreateRoute = createRoute({
+  method: 'post',
+  path: '/projects/{projectId}/pointage',
+  request: {
+    params: z.object({ projectId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: pointageRecordCreateSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Pointage record created',
+      content: { 'application/json': { schema: pointageRecordSelectSchema } },
+    },
+  },
+});
+
+pointageApp.openapi(pointageCreateRoute, async (c) => {
+  const projectId = c.req.param('projectId') as string;
   const input = c.req.valid('json') as PointageRecordCreateInput;
   const [record] = await db.insert(pointageRecords).values({
     projectId,
+    // L6e: `pointage_records.date` is NOT NULL with no default — default to
+    // today so a valid body returns 201 instead of a DB error.
+    date: new Date(),
     tradeId: input.tradeId,
     count: input.count,
     isCompanyTrade: input.isCompanyTrade ? 1 : 0,
     subcontractorId: input.subcontractorId,
-  }).returning();
+  } as any).returning();
 
   return c.json(record, 201);
 });
 
-pointageRouter.patch('/pointage/:id', validatePointageRecordUpdate, async (c) => {
+const pointagePatchRoute = createRoute({
+  method: 'patch',
+  path: '/pointage/{id}',
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: pointageRecordUpdateSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      description: 'Pointage record updated',
+      content: { 'application/json': { schema: pointageRecordSelectSchema } },
+    },
+    404: {
+      description: 'Pointage record not found',
+    },
+  },
+});
+
+pointageApp.openapi(pointagePatchRoute, async (c) => {
   const id = c.req.param('id');
   const input = c.req.valid('json') as PointageRecordUpdateInput;
   const updates: Record<string, unknown> = {};
@@ -57,14 +116,42 @@ pointageRouter.patch('/pointage/:id', validatePointageRecordUpdate, async (c) =>
   return c.json(record);
 });
 
-pointageRouter.delete('/pointage/:id', async (c) => {
+const pointageDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/pointage/{id}',
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+  },
+  responses: {
+    200: {
+      description: 'Pointage record deleted',
+      content: { 'application/json': { schema: deletedResponseSchema } },
+    },
+    404: {
+      description: 'Pointage record not found',
+    },
+  },
+});
+
+pointageApp.openapi(pointageDeleteRoute, async (c) => {
   const id = c.req.param('id');
   const [deleted] = await db.delete(pointageRecords).where(eq(pointageRecords.id, id)).returning();
   if (!deleted) return c.json({ error: 'Pointage record not found' }, 404);
   return c.json({ deleted: true });
 });
 
-pointageRouter.get('/trade-catalog', async (c) => {
+const tradeCatalogRoute = createRoute({
+  method: 'get',
+  path: '/trade-catalog',
+  responses: {
+    200: {
+      description: 'List the trade catalog',
+      content: { 'application/json': { schema: z.array(tradeCatalogSelectSchema) } },
+    },
+  },
+});
+
+pointageApp.openapi(tradeCatalogRoute, async (c) => {
   const result = await db.select().from(tradeCatalog);
   return c.json(result);
 });

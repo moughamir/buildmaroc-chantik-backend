@@ -1,6 +1,8 @@
-import { Hono } from "hono";
-import { validateUploadUrl } from '../validation/middleware';
+import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
+import { z } from 'zod';
+import { uploadUrlSchema, uploadUrlResponseSchema } from '../validation/schemas';
 import type { UploadUrlInput } from '../validation/schemas';
+import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
 
 let supabase: ReturnType<typeof import("@supabase/supabase-js").createClient> | null = null;
 try {
@@ -14,9 +16,32 @@ try {
   // Supabase not configured
 }
 
-export const capturesRouter = new Hono();
+// Mounted at /api/v1/captures.
+// L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
+// The signed-upload-url response shape is kept byte-identical.
+export const capturesApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
-capturesRouter.post('/upload-url', validateUploadUrl, async (c) => {
+const uploadUrlRoute = createRoute({
+  method: 'post',
+  path: '/upload-url',
+  request: {
+    body: { content: { 'application/json': { schema: uploadUrlSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      description: 'Signed upload URL for a panorama asset',
+      content: { 'application/json': { schema: uploadUrlResponseSchema } },
+    },
+    400: {
+      description: 'Supabase storage error',
+    },
+    500: {
+      description: 'Storage not configured',
+    },
+  },
+});
+
+capturesApp.openapi(uploadUrlRoute, async (c) => {
   const { fileName, fileType } = c.req.valid('json') as UploadUrlInput;
   if (!supabase) return c.json({ error: 'Storage not configured' }, 500);
   const path = `panoramas/${Date.now()}_${fileName}`;

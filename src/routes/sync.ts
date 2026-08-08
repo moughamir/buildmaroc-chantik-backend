@@ -1,13 +1,31 @@
-import { Hono } from 'hono';
+import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
+import { z } from 'zod';
 import { db } from '../db';
 import { hotspots } from '../db/schema';
 import { eq, gt } from 'drizzle-orm';
-import { validateSyncBatch } from '../validation/middleware';
+import { syncBatchSchema, syncPullResponseSchema, syncBatchResponseSchema } from '../validation/schemas';
 import type { SyncBatchInput } from '../validation/schemas';
+import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
 
-export const syncRouter = new Hono();
+// Mounted at /api/v1/sync.
+// L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
+export const syncApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
-syncRouter.get('/pull', async (c) => {
+const syncPullRoute = createRoute({
+  method: 'get',
+  path: '/pull',
+  request: {
+    query: z.object({ since: z.string().optional() }),
+  },
+  responses: {
+    200: {
+      description: 'Incremental changes since the given timestamp',
+      content: { 'application/json': { schema: syncPullResponseSchema } },
+    },
+  },
+});
+
+syncApp.openapi(syncPullRoute, async (c) => {
   const since = c.req.query('since');
   const lastSync = since ? new Date(since) : new Date(0);
 
@@ -21,10 +39,24 @@ syncRouter.get('/pull', async (c) => {
   });
 });
 
-syncRouter.post('/batch', validateSyncBatch, async (c) => {
+const syncBatchRoute = createRoute({
+  method: 'post',
+  path: '/batch',
+  request: {
+    body: { content: { 'application/json': { schema: syncBatchSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      description: 'Processed offline mutations',
+      content: { 'application/json': { schema: syncBatchResponseSchema } },
+    },
+  },
+});
+
+syncApp.openapi(syncBatchRoute, async (c) => {
   const { mutations } = c.req.valid('json') as SyncBatchInput;
 
-  const results = [];
+  const results: { clientGuid: string; status: 'synced'; data: typeof hotspots.$inferSelect }[] = [];
   for (const action of mutations) {
     if (action.type === 'CREATE_HOTSPOT') {
       const inserted = await db.insert(hotspots).values(action.payload).returning();

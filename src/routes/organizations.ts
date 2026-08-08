@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
+import { z } from 'zod';
 import { db } from '../db';
 import { eq, and } from 'drizzle-orm';
 import { createHash } from 'crypto';
@@ -20,30 +21,50 @@ import {
   workCrews,
   crewMembers,
   equipment,
+  auditLogs,
 } from '../db/schema';
 import {
-  validateOrganization,
-  validateUpdateOrganization,
-  validateOrganizationInvitation,
-  validateInvitationAccept,
-  validateTeamCreate,
-  validateTeamMemberAssign,
-  validateCustomRoleCreate,
-  validateCustomRoleUpdate,
-  validateUserRoleAssign,
-  validateCheckoutSession,
-  validateApiKeyCreate,
-  validateWebhookRegister,
-  validateProject,
-  validateWorkCrew,
-  validateEquipment,
-} from '../validation/middleware';
+  organizationSchema,
+  updateOrganizationSchema,
+  organizationInvitationSchema,
+  customRoleCreateSchema,
+  customRoleUpdateSchema,
+  userRoleAssignSchema,
+  checkoutSessionSchema,
+  apiKeyCreateSchema,
+  webhookRegisterSchema,
+  projectSchema,
+  workCrewSchema,
+  equipmentSchema,
+  teamCreateSchema,
+  teamMemberAssignSchema,
+  organizationSelectSchema,
+  organizationListSelectSchema,
+  orgMemberWithUserSchema,
+  organizationInvitationSelectSchema,
+  customRoleSelectSchema,
+  userRoleSelectSchema,
+  subscriptionSelectSchema,
+  invoiceSelectSchema,
+  apiKeyListSelectSchema,
+  apiKeyWithKeySchema,
+  webhookSelectSchema,
+  projectSelectSchema,
+  crewWithLeadSchema,
+  workCrewSelectSchema,
+  equipmentSelectSchema,
+  teamSelectSchema,
+  teamMemberSelectSchema,
+  auditLogSelectSchema,
+  deletedResponseSchema,
+  removedResponseSchema,
+  checkoutResponseSchema,
+  exportDataSchema,
+} from '../validation/schemas';
 import type {
   OrganizationInput,
   UpdateOrganizationInput,
-  InvitationAcceptInput,
-  TeamCreateInput,
-  TeamMemberAssignInput,
+  OrganizationInvitationInput,
   CustomRoleCreateInput,
   CustomRoleUpdateInput,
   UserRoleAssignInput,
@@ -53,12 +74,32 @@ import type {
   ProjectInput,
   WorkCrewInput,
   EquipmentInput,
+  TeamCreateInput,
+  TeamMemberAssignInput,
 } from '../validation/schemas';
+import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
+import type { SessionVariables } from '../middleware/session';
 
-export const organizationsRouter = new Hono();
+// Mounted at /api/v1/organizations.
+// L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
+// Org-scoping: identity comes from the session middleware (c.get('userId'));
+// every org-scoped route takes its `:orgId` from the path (existing contract).
+export const organizationsApp = new OpenAPIHono<{ Variables: SessionVariables }>({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
-organizationsRouter.get('/', async (c) => {
-  const userId = c.req.header('x-user-id') || '';
+const organizationsListRoute = createRoute({
+  method: 'get',
+  path: '/',
+  responses: {
+    200: {
+      description: 'Organizations the authenticated user belongs to',
+      content: { 'application/json': { schema: z.array(organizationListSelectSchema) } },
+    },
+  },
+});
+
+organizationsApp.openapi(organizationsListRoute, async (c) => {
+  const userId = c.get('userId');
+  if (!userId) return c.json([]);
   const result = await db
     .select({
       id: organizations.id,
@@ -74,32 +115,79 @@ organizationsRouter.get('/', async (c) => {
   return c.json(result);
 });
 
-organizationsRouter.post('/', validateOrganization, async (c) => {
+const organizationsCreateRoute = createRoute({
+  method: 'post',
+  path: '/',
+  request: {
+    body: { content: { 'application/json': { schema: organizationSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Organization created',
+      content: { 'application/json': { schema: organizationSelectSchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(organizationsCreateRoute, async (c) => {
   const input = c.req.valid('json') as OrganizationInput;
   const userId = c.get('userId') || '';
   const [org] = await db.insert(organizations).values({
     name: input.name,
     slug: input.slug,
     billingEmail: input.billingEmail,
-  }).returning();
+  } as any).returning();
 
   await db.insert(organizationMembers).values({
     organizationId: org.id,
     userId,
     role: 'owner',
-  });
+  } as any);
 
   return c.json(org, 201);
 });
 
-organizationsRouter.get('/:orgId', async (c) => {
+const organizationGetRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Organization detail',
+      content: { 'application/json': { schema: organizationSelectSchema } },
+    },
+    404: {
+      description: 'Organization not found',
+    },
+  },
+});
+
+organizationsApp.openapi(organizationGetRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
   if (!org) return c.json({ error: 'Organization not found' }, 404);
   return c.json(org);
 });
 
-organizationsRouter.patch('/:orgId', validateUpdateOrganization, async (c) => {
+const organizationPatchRoute = createRoute({
+  method: 'patch',
+  path: '/{orgId}',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: updateOrganizationSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      description: 'Organization updated',
+      content: { 'application/json': { schema: organizationSelectSchema } },
+    },
+    404: {
+      description: 'Organization not found',
+    },
+  },
+});
+
+organizationsApp.openapi(organizationPatchRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as UpdateOrganizationInput;
   const [org] = await db.update(organizations)
@@ -111,22 +199,49 @@ organizationsRouter.patch('/:orgId', validateUpdateOrganization, async (c) => {
   return c.json(org);
 });
 
-organizationsRouter.delete('/:orgId', async (c) => {
+const organizationDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/{orgId}',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Organization deleted',
+      content: { 'application/json': { schema: deletedResponseSchema } },
+    },
+    404: {
+      description: 'Organization not found',
+    },
+  },
+});
+
+organizationsApp.openapi(organizationDeleteRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const [org] = await db.delete(organizations).where(eq(organizations.id, orgId)).returning();
   if (!org) return c.json({ error: 'Organization not found' }, 404);
   return c.json({ deleted: true });
 });
 
-organizationsRouter.get('/:orgId/members', async (c) => {
+const organizationMembersListRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/members',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Members of the organization with user email/name',
+      content: { 'application/json': { schema: z.array(orgMemberWithUserSchema) } },
+    },
+  },
+});
+
+organizationsApp.openapi(organizationMembersListRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const result = await db
     .select({
       userId: organizationMembers.userId,
       role: organizationMembers.role,
-      joinedAt: organizationMembers.joinedAt,
+      createdAt: organizationMembers.createdAt,
       email: users.email,
-      fullName: users.fullName,
+      name: users.name,
     })
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
@@ -135,9 +250,24 @@ organizationsRouter.get('/:orgId/members', async (c) => {
   return c.json(result);
 });
 
-organizationsRouter.post('/:orgId/invitations', validateOrganizationInvitation, async (c) => {
-  const orgId = c.req.param('orgId');
-  const input = c.req.valid('json');
+const organizationInvitationCreateRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/invitations',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: organizationInvitationSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Invitation created',
+      content: { 'application/json': { schema: organizationInvitationSelectSchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(organizationInvitationCreateRoute, async (c) => {
+  const orgId = c.req.param('orgId') as string;
+  const input = c.req.valid('json') as OrganizationInvitationInput;
   const token = crypto.randomUUID();
   const [invitation] = await db.insert(organizationInvitations).values({
     organizationId: orgId,
@@ -145,20 +275,47 @@ organizationsRouter.post('/:orgId/invitations', validateOrganizationInvitation, 
     role: input.role || 'member',
     token,
     status: 'pending',
-    invitedById: input.invitedById,
+    invitedById: c.get('userId') || null,
     expiresAt: new Date(input.expiresAt),
-  }).returning();
+  } as any).returning();
 
   return c.json(invitation, 201);
 });
 
-organizationsRouter.get('/:orgId/roles', async (c) => {
+const customRolesListRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/roles',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Custom roles for the organization',
+      content: { 'application/json': { schema: z.array(customRoleSelectSchema) } },
+    },
+  },
+});
+
+organizationsApp.openapi(customRolesListRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const roles = await db.select().from(customRoles).where(eq(customRoles.organizationId, orgId));
   return c.json(roles);
 });
 
-organizationsRouter.post('/:orgId/roles', validateCustomRoleCreate, async (c) => {
+const customRoleCreateRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/roles',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: customRoleCreateSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Custom role created',
+      content: { 'application/json': { schema: customRoleSelectSchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(customRoleCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as CustomRoleCreateInput;
   const [role] = await db.insert(customRoles).values({
@@ -169,7 +326,25 @@ organizationsRouter.post('/:orgId/roles', validateCustomRoleCreate, async (c) =>
   return c.json(role, 201);
 });
 
-organizationsRouter.patch('/:orgId/roles/:roleId', validateCustomRoleUpdate, async (c) => {
+const customRolePatchRoute = createRoute({
+  method: 'patch',
+  path: '/{orgId}/roles/{roleId}',
+  request: {
+    params: z.object({ orgId: z.string().uuid(), roleId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: customRoleUpdateSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      description: 'Custom role updated',
+      content: { 'application/json': { schema: customRoleSelectSchema } },
+    },
+    404: {
+      description: 'Role not found',
+    },
+  },
+});
+
+organizationsApp.openapi(customRolePatchRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const roleId = c.req.param('roleId');
   const input = c.req.valid('json') as CustomRoleUpdateInput;
@@ -196,7 +371,22 @@ organizationsRouter.patch('/:orgId/roles/:roleId', validateCustomRoleUpdate, asy
   return c.json(role);
 });
 
-organizationsRouter.post('/:orgId/users/:userId/roles', validateUserRoleAssign, async (c) => {
+const userRoleAssignRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/users/{userId}/roles',
+  request: {
+    params: z.object({ orgId: z.string().uuid(), userId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: userRoleAssignSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Role assigned to user',
+      content: { 'application/json': { schema: userRoleSelectSchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(userRoleAssignRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const userId = c.req.param('userId');
   const input = c.req.valid('json') as UserRoleAssignInput;
@@ -209,14 +399,47 @@ organizationsRouter.post('/:orgId/users/:userId/roles', validateUserRoleAssign, 
   return c.json(assignment, 201);
 });
 
-organizationsRouter.get('/:orgId/subscription', async (c) => {
+const subscriptionGetRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/subscription',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Organization subscription',
+      content: { 'application/json': { schema: subscriptionSelectSchema } },
+    },
+    404: {
+      description: 'Subscription not found',
+    },
+  },
+});
+
+organizationsApp.openapi(subscriptionGetRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const [sub] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, orgId)).limit(1);
   if (!sub) return c.json({ error: 'Subscription not found' }, 404);
   return c.json(sub);
 });
 
-organizationsRouter.post('/:orgId/subscription/checkout', validateCheckoutSession, async (c) => {
+const checkoutCreateRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/subscription/checkout',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: checkoutSessionSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Mock Stripe checkout session',
+      content: { 'application/json': { schema: checkoutResponseSchema } },
+    },
+    404: {
+      description: 'Subscription not found',
+    },
+  },
+});
+
+organizationsApp.openapi(checkoutCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as CheckoutSessionInput;
 
@@ -229,19 +452,58 @@ organizationsRouter.post('/:orgId/subscription/checkout', validateCheckoutSessio
   }, 201);
 });
 
-organizationsRouter.get('/:orgId/invoices', async (c) => {
+const invoicesListRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/invoices',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Organization invoices',
+      content: { 'application/json': { schema: z.array(invoiceSelectSchema) } },
+    },
+  },
+});
+
+organizationsApp.openapi(invoicesListRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const result = await db.select().from(invoices).where(eq(invoices.organizationId, orgId));
   return c.json(result);
 });
 
-organizationsRouter.get('/:orgId/api-keys', async (c) => {
+const apiKeysListRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/api-keys',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Organization API keys (no secrets)',
+      content: { 'application/json': { schema: z.array(apiKeyListSelectSchema) } },
+    },
+  },
+});
+
+organizationsApp.openapi(apiKeysListRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const result = await db.select({ id: apiKeys.id, name: apiKeys.name, prefix: apiKeys.prefix, createdAt: apiKeys.createdAt }).from(apiKeys).where(eq(apiKeys.organizationId, orgId));
   return c.json(result);
 });
 
-organizationsRouter.post('/:orgId/api-keys', validateApiKeyCreate, async (c) => {
+const apiKeyCreateRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/api-keys',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: apiKeyCreateSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'API key created (raw key returned once)',
+      content: { 'application/json': { schema: apiKeyWithKeySchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(apiKeyCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as ApiKeyCreateInput;
   const rawKey = `ck_${crypto.randomUUID().replace(/-/g, '')}`;
@@ -258,7 +520,24 @@ organizationsRouter.post('/:orgId/api-keys', validateApiKeyCreate, async (c) => 
   return c.json({ ...apiKey, key: rawKey }, 201);
 });
 
-organizationsRouter.delete('/:orgId/api-keys/:keyId', async (c) => {
+const apiKeyDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/{orgId}/api-keys/{keyId}',
+  request: {
+    params: z.object({ orgId: z.string().uuid(), keyId: z.string().uuid() }),
+  },
+  responses: {
+    200: {
+      description: 'API key deleted',
+      content: { 'application/json': { schema: deletedResponseSchema } },
+    },
+    404: {
+      description: 'API key not found',
+    },
+  },
+});
+
+organizationsApp.openapi(apiKeyDeleteRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const keyId = c.req.param('keyId');
   const [deleted] = await db.delete(apiKeys).where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, orgId))).returning();
@@ -266,13 +545,40 @@ organizationsRouter.delete('/:orgId/api-keys/:keyId', async (c) => {
   return c.json({ deleted: true });
 });
 
-organizationsRouter.get('/:orgId/webhooks', async (c) => {
+const webhooksListRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/webhooks',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Organization webhooks',
+      content: { 'application/json': { schema: z.array(webhookSelectSchema) } },
+    },
+  },
+});
+
+organizationsApp.openapi(webhooksListRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const result = await db.select().from(webhooks).where(eq(webhooks.organizationId, orgId));
   return c.json(result);
 });
 
-organizationsRouter.post('/:orgId/webhooks', validateWebhookRegister, async (c) => {
+const webhookCreateRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/webhooks',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: webhookRegisterSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Webhook registered',
+      content: { 'application/json': { schema: webhookSelectSchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(webhookCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as WebhookRegisterInput;
   const [webhook] = await db.insert(webhooks).values({
@@ -285,7 +591,24 @@ organizationsRouter.post('/:orgId/webhooks', validateWebhookRegister, async (c) 
   return c.json(webhook, 201);
 });
 
-organizationsRouter.delete('/:orgId/webhooks/:webhookId', async (c) => {
+const webhookDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/{orgId}/webhooks/{webhookId}',
+  request: {
+    params: z.object({ orgId: z.string().uuid(), webhookId: z.string().uuid() }),
+  },
+  responses: {
+    200: {
+      description: 'Webhook deleted',
+      content: { 'application/json': { schema: deletedResponseSchema } },
+    },
+    404: {
+      description: 'Webhook not found',
+    },
+  },
+});
+
+organizationsApp.openapi(webhookDeleteRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const webhookId = c.req.param('webhookId');
   const [deleted] = await db.delete(webhooks).where(and(eq(webhooks.id, webhookId), eq(webhooks.organizationId, orgId))).returning();
@@ -293,13 +616,40 @@ organizationsRouter.delete('/:orgId/webhooks/:webhookId', async (c) => {
   return c.json({ deleted: true });
 });
 
-organizationsRouter.get('/:orgId/projects', async (c) => {
+const orgProjectsListRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/projects',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Projects for an explicit organization',
+      content: { 'application/json': { schema: z.array(projectSelectSchema) } },
+    },
+  },
+});
+
+organizationsApp.openapi(orgProjectsListRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const result = await db.select().from(projects).where(eq(projects.organizationId, orgId));
   return c.json(result);
 });
 
-organizationsRouter.post('/:orgId/projects', validateProject, async (c) => {
+const orgProjectCreateRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/projects',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: projectSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Project created',
+      content: { 'application/json': { schema: projectSelectSchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(orgProjectCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as ProjectInput;
   const [project] = await db.insert(projects).values({
@@ -314,7 +664,19 @@ organizationsRouter.post('/:orgId/projects', validateProject, async (c) => {
   return c.json(project, 201);
 });
 
-organizationsRouter.get('/:orgId/crews', async (c) => {
+const orgCrewsListRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/crews',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Crews for the organization with team lead name',
+      content: { 'application/json': { schema: z.array(crewWithLeadSchema) } },
+    },
+  },
+});
+
+organizationsApp.openapi(orgCrewsListRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const result = await db
     .select({
@@ -324,7 +686,7 @@ organizationsRouter.get('/:orgId/crews', async (c) => {
       teamLeadId: workCrews.teamLeadId,
       projectId: workCrews.projectId,
       createdAt: workCrews.createdAt,
-      leadName: users.fullName,
+      leadName: users.name,
     })
     .from(workCrews)
     .leftJoin(users, eq(users.id, workCrews.teamLeadId))
@@ -333,7 +695,22 @@ organizationsRouter.get('/:orgId/crews', async (c) => {
   return c.json(result);
 });
 
-organizationsRouter.post('/:orgId/crews', validateWorkCrew, async (c) => {
+const orgCrewCreateRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/crews',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: workCrewSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Crew created',
+      content: { 'application/json': { schema: workCrewSelectSchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(orgCrewCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as WorkCrewInput;
   const [crew] = await db.insert(workCrews).values({
@@ -347,13 +724,40 @@ organizationsRouter.post('/:orgId/crews', validateWorkCrew, async (c) => {
   return c.json(crew, 201);
 });
 
-organizationsRouter.get('/:orgId/equipment', async (c) => {
+const orgEquipmentListRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/equipment',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Equipment for the organization',
+      content: { 'application/json': { schema: z.array(equipmentSelectSchema) } },
+    },
+  },
+});
+
+organizationsApp.openapi(orgEquipmentListRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const result = await db.select().from(equipment).where(eq(equipment.organizationId, orgId));
   return c.json(result);
 });
 
-organizationsRouter.post('/:orgId/equipment', validateEquipment, async (c) => {
+const orgEquipmentCreateRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/equipment',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: equipmentSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Equipment created',
+      content: { 'application/json': { schema: equipmentSelectSchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(orgEquipmentCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as EquipmentInput;
   const [eq] = await db.insert(equipment).values({
@@ -369,7 +773,22 @@ organizationsRouter.post('/:orgId/equipment', validateEquipment, async (c) => {
   return c.json(eq, 201);
 });
 
-organizationsRouter.post('/:orgId/teams', validateTeamCreate, async (c) => {
+const teamCreateRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/teams',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: teamCreateSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Team created',
+      content: { 'application/json': { schema: teamSelectSchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(teamCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const input = c.req.valid('json') as TeamCreateInput;
   const [team] = await db.insert(teams).values({
@@ -380,7 +799,22 @@ organizationsRouter.post('/:orgId/teams', validateTeamCreate, async (c) => {
   return c.json(team, 201);
 });
 
-organizationsRouter.post('/:orgId/teams/:teamId/members', validateTeamMemberAssign, async (c) => {
+const teamMemberAssignRoute = createRoute({
+  method: 'post',
+  path: '/{orgId}/teams/{teamId}/members',
+  request: {
+    params: z.object({ orgId: z.string().uuid(), teamId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: teamMemberAssignSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Team member assigned',
+      content: { 'application/json': { schema: teamMemberSelectSchema } },
+    },
+  },
+});
+
+organizationsApp.openapi(teamMemberAssignRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const teamId = c.req.param('teamId');
   const input = c.req.valid('json') as TeamMemberAssignInput;
@@ -392,7 +826,24 @@ organizationsRouter.post('/:orgId/teams/:teamId/members', validateTeamMemberAssi
   return c.json(member, 201);
 });
 
-organizationsRouter.delete('/:orgId/members/:userId', async (c) => {
+const organizationMemberDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/{orgId}/members/{userId}',
+  request: {
+    params: z.object({ orgId: z.string().uuid(), userId: z.string().uuid() }),
+  },
+  responses: {
+    200: {
+      description: 'Member removed',
+      content: { 'application/json': { schema: removedResponseSchema } },
+    },
+    404: {
+      description: 'Member not found',
+    },
+  },
+});
+
+organizationsApp.openapi(organizationMemberDeleteRoute, async (c) => {
   const orgId = c.req.param('orgId');
   const userId = c.req.param('userId');
   const [removed] = await db
@@ -405,4 +856,67 @@ organizationsRouter.delete('/:orgId/members/:userId', async (c) => {
 
   if (!removed) return c.json({ error: 'Member not found' }, 404);
   return c.json({ removed: true });
+});
+
+const orgAuditLogsListRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/audit-logs',
+  request: { params: z.object({ orgId: z.string().uuid() }) },
+  responses: {
+    200: {
+      description: 'Recent audit logs for the organization',
+      content: { 'application/json': { schema: z.array(auditLogSelectSchema) } },
+    },
+  },
+});
+
+organizationsApp.openapi(orgAuditLogsListRoute, async (c) => {
+  const orgId = c.req.param('orgId');
+  const result = await db.select().from(auditLogs).where(eq(auditLogs.organizationId, orgId)).limit(100);
+  return c.json(result);
+});
+
+const orgExportRoute = createRoute({
+  method: 'get',
+  path: '/{orgId}/export',
+  request: {
+    params: z.object({ orgId: z.string().uuid() }),
+    query: z.object({ format: z.string().optional() }),
+  },
+  responses: {
+    200: {
+      description: 'Organization export (JSON payload; the csv=format branch returns a raw CSV response)',
+    },
+  },
+});
+
+organizationsApp.openapi(orgExportRoute, async (c) => {
+  const orgId = c.req.param('orgId');
+  const format = c.req.query('format') || 'json';
+
+  const orgProjects = await db.select().from(projects).where(eq(projects.organizationId, orgId));
+  const orgMembers = await db.select().from(organizationMembers).where(eq(organizationMembers.organizationId, orgId));
+  const orgInvoices = await db.select().from(invoices).where(eq(invoices.organizationId, orgId));
+
+  const exportData = {
+    exportedAt: new Date().toISOString(),
+    organizationId: orgId,
+    projects: orgProjects,
+    members: orgMembers,
+    invoices: orgInvoices,
+  };
+
+  if (format === 'csv') {
+    const headers = ['id', 'name', 'code', 'region', 'status', 'created_at'];
+    const rows = orgProjects.map((p: any) => [p.id, JSON.stringify(p.name), p.code, p.region, p.status, p.createdAt].join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    return new Response(csv, {
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="chantik-export-${orgId}.csv"`,
+      },
+    });
+  }
+
+  return c.json(exportData);
 });

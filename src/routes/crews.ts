@@ -1,13 +1,31 @@
-import { Hono } from 'hono';
+import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
+import { z } from 'zod';
 import { db } from '../db';
-import { eq } from 'drizzle-orm';
 import { crewMembers } from '../db/schema';
-import { validateCrewMember } from '../validation/middleware';
+import { crewMemberSchema, crewMemberSelectSchema } from '../validation/schemas';
 import type { CrewMemberInput } from '../validation/schemas';
+import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
 
-export const crewsRouter = new Hono();
+// Mounted at /api/v1/crews.
+// L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
+export const crewsApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
-crewsRouter.post('/:crewId/members', validateCrewMember, async (c) => {
+const crewMemberCreateRoute = createRoute({
+  method: 'post',
+  path: '/{crewId}/members',
+  request: {
+    params: z.object({ crewId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: crewMemberSchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Crew member assigned',
+      content: { 'application/json': { schema: crewMemberSelectSchema } },
+    },
+  },
+});
+
+crewsApp.openapi(crewMemberCreateRoute, async (c) => {
   const crewId = c.req.param('crewId');
   const input = c.req.valid('json') as CrewMemberInput;
   const [member] = await db.insert(crewMembers).values({

@@ -1,4 +1,16 @@
 import { z } from 'zod';
+import { createInsertSchema, createUpdateSchema, createSelectSchema } from 'drizzle-zod';
+import { projects, zones, capturePoints, panoramas, hotspots } from '../db/schema/projects';
+import { notes } from '../db/schema/notes';
+import { pointageRecords, tradeCatalog } from '../db/schema/pointage';
+import { rfis, changeOrders, blueprintSheets, equipment } from '../db/schema/construction';
+import { workCrews, crewMembers, attendanceLogs, siteDailyLogs } from '../db/schema/workforce';
+import { organizations, organizationMembers, organizationInvitations, teams, teamMembers } from '../db/schema/organizations';
+import { users, userPreferences, userSecurityLogs } from '../db/schema/users';
+import { customRoles, rolePermissions, userRoles } from '../db/schema/rbac';
+import { subscriptions, invoices, apiKeys, webhooks } from '../db/schema/billing';
+import { auditLogs } from '../db/schema/audit';
+import { projectHealthView } from '../db/schema/views';
 
 // ============================================================================
 // 1. SYNC & OFFLINE MUTATIONS
@@ -146,8 +158,8 @@ export const blueprintSheetSchema = z.object({
 
 export const userSchema = z.object({
   email: z.string().email(),
-  fullName: z.string().optional(),
-  avatarUrl: z.string().url().optional(),
+  name: z.string().optional(),
+  image: z.string().url().optional(),
 });
 
 export const organizationSchema = z.object({
@@ -163,16 +175,33 @@ export const organizationInvitationSchema = z.object({
   expiresAt: z.string().datetime(),
 });
 
-export const projectSchema = z.object({
-  organizationId: z.string().uuid(),
-  name: z.string().min(1),
+// Derived from the `projects` table (src/db/schema/projects.ts) via drizzle-zod
+// so column names, types, and the status enum stay in sync with the DB.
+// Refinements encode the API-facing contract on top of the derivation:
+//   - `name`/`region` stay required and non-empty
+//   - `code` is optional *without* null (the column is nullable; API inputs use undefined)
+//   - `coordinates` is a typed { lng, lat } object (drizzle-zod maps the custom
+//     geometry column to `z.any()` at runtime, so it is re-typed to the GeometryPoint shape)
+//   - `status` keeps the table enum + default, so it stays optional on input
+//   - internal columns (id, manager, budget, dates, progress, timestamps…) are not part of the body
+export const projectSchema = createInsertSchema(projects, {
+  name: (schema) => schema.min(1),
   code: z.string().max(50).optional(),
-  region: z.string().min(1).max(100),
-  coordinates: z.object({
-    lng: z.number(),
-    lat: z.number(),
-  }).optional(),
-  status: z.enum(['planning', 'in_progress', 'completed', 'archived']).optional(),
+  region: (schema) => schema.min(1),
+  coordinates: z.object({ lng: z.number(), lat: z.number() }).optional(),
+}).omit({
+  id: true,
+  managerUserId: true,
+  budgetCents: true,
+  spentProgress: true,
+  surfaceSqm: true,
+  workersCount: true,
+  startDate: true,
+  expectedEndDate: true,
+  complianceScore: true,
+  scheduleDeltaDays: true,
+  operationalStatus: true,
+  createdAt: true,
 });
 
 // ============================================================================
@@ -227,8 +256,8 @@ export const teamMemberAssignSchema = z.object({
 // ============================================================================
 
 export const userProfileUpdateSchema = z.object({
-  fullName: z.string().optional(),
-  avatarUrl: z.string().url().optional(),
+  name: z.string().optional(),
+  image: z.string().url().optional(),
 });
 
 export const userPreferencesUpdateSchema = z.object({
@@ -305,7 +334,7 @@ export const panoramaUploadSchema = z.object({
   storagePath: z.string().min(1),
   capturedAt: z.string().datetime(),
   uploadedById: z.string().uuid(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 // REST-specific hotspot schemas. The sync-flavored schemas above embed the
@@ -342,25 +371,36 @@ export const equipmentUpdateSchema = z.object({
   lastServiceDate: z.string().datetime().optional(),
 });
 
-export const noteCreateSchema = z.object({
-  content: z.string().min(1),
-});
+// Derived from the `notes` table. The router supplies projectId/createdById from
+// the URL/auth context, so only `content` is part of the API body.
+export const noteCreateSchema = createInsertSchema(notes, {
+  content: (schema) => schema.min(1),
+}).omit({ id: true, projectId: true, createdById: true, createdAt: true, updatedAt: true });
 
-export const noteUpdateSchema = z.object({
-  content: z.string().min(1).optional(),
-});
+export const noteUpdateSchema = createUpdateSchema(notes, {
+  content: (schema) => schema.min(1),
+}).omit({ id: true, projectId: true, createdById: true, createdAt: true, updatedAt: true });
 
-export const pointageRecordCreateSchema = z.object({
+// Derived from the `pointageRecords` table. The router supplies projectId from
+// the URL, and `date` is not part of the create body today — both are omitted.
+// Deliberate refinements vs. the raw table type:
+//   - `isCompanyTrade` is an integer (0/1) DB column, but the API contract is a
+//     boolean (the router converts `? 1 : 0`)
+//   - `count` stays required on create despite the DB default (0)
+//   - `tradeId`/`subcontractorId` are optional *without* null (nullable columns)
+export const pointageRecordCreateSchema = createInsertSchema(pointageRecords, {
   tradeId: z.string().uuid().optional(),
-  count: z.number().int().nonnegative(),
+  count: z.number().int().min(0),
   isCompanyTrade: z.boolean(),
   subcontractorId: z.string().uuid().optional(),
-});
+}).omit({ id: true, projectId: true, date: true, createdAt: true, updatedAt: true });
 
-export const pointageRecordUpdateSchema = z.object({
-  count: z.number().int().nonnegative().optional(),
-});
+export const pointageRecordUpdateSchema = createUpdateSchema(pointageRecords, {
+  count: (schema) => schema.min(0),
+}).omit({ id: true, projectId: true, date: true, tradeId: true, isCompanyTrade: true, subcontractorId: true, createdAt: true, updatedAt: true });
 
+// Query-string filter for GET /projects/:projectId/pointage — not an insert
+// shape, so it stays a plain hand-written schema (date arrives as an ISO string).
 export const pointageQuerySchema = z.object({
   date: z.string().datetime().optional(),
 });
@@ -390,3 +430,181 @@ export type CreateHotspotRestInput = z.infer<typeof createHotspotRestSchema>;
 export type UpdateHotspotRestInput = z.infer<typeof updateHotspotRestSchema>;
 export type UserProfileUpdateInput = z.infer<typeof userProfileUpdateSchema>;
 export type UserPreferencesUpdateInput = z.infer<typeof userPreferencesUpdateSchema>;
+
+// ============================================================================
+// 13. RESPONSE SCHEMAS (L6b — OpenAPI doc + future typed RPC client)
+// ============================================================================
+// `createSelectSchema` derives the full select-* row shape so the documented
+// responses (and the `AppType` used by a later `hc<AppType>()` client) match
+// what the handlers actually return. The routers only consume these for the
+// OpenAPI responses — they are never used to validate runtime output.
+
+export const projectSelectSchema = createSelectSchema(projects);
+export const noteSelectSchema = createSelectSchema(notes);
+export const pointageRecordSelectSchema = createSelectSchema(pointageRecords);
+export const zoneSelectSchema = createSelectSchema(zones);
+export const rfiSelectSchema = createSelectSchema(rfis);
+export const changeOrderSelectSchema = createSelectSchema(changeOrders);
+export const blueprintSheetSelectSchema = createSelectSchema(blueprintSheets);
+export const siteDailyLogSelectSchema = createSelectSchema(siteDailyLogs);
+export const attendanceLogSelectSchema = createSelectSchema(attendanceLogs).pick({
+  id: true,
+  userId: true,
+  clockInAt: true,
+  clockOutAt: true,
+  totalHours: true,
+  isFlagged: true,
+  flagReason: true,
+  status: true,
+});
+export const projectHealthSelectSchema = createSelectSchema(projectHealthView);
+export const tradeCatalogSelectSchema = createSelectSchema(tradeCatalog);
+
+// GET /projects/{projectId} appends the nested `captures` array to the row.
+export const projectWithCapturesSchema = projectSelectSchema.extend({
+  captures: z.array(z.any()),
+});
+
+// Shared error/ack shapes returned by the converted routes.
+export const errorResponseSchema = z.object({ error: z.string() });
+export const deletedResponseSchema = z.object({ deleted: z.boolean() });
+export const removedResponseSchema = z.object({ removed: z.boolean() });
+
+// ============================================================================
+// 14. RESPONSE SCHEMAS — L6e converted routers (orgs, users, crews, sync,
+//     captures, spatial, attendance, construction-root, admin)
+// ============================================================================
+
+export const organizationSelectSchema = createSelectSchema(organizations);
+export const organizationMemberSelectSchema = createSelectSchema(organizationMembers);
+export const organizationInvitationSelectSchema = createSelectSchema(organizationInvitations);
+export const teamSelectSchema = createSelectSchema(teams);
+export const teamMemberSelectSchema = createSelectSchema(teamMembers);
+export const customRoleSelectSchema = createSelectSchema(customRoles);
+export const rolePermissionSelectSchema = createSelectSchema(rolePermissions);
+export const userRoleSelectSchema = createSelectSchema(userRoles);
+export const subscriptionSelectSchema = createSelectSchema(subscriptions);
+export const invoiceSelectSchema = createSelectSchema(invoices);
+export const apiKeySelectSchema = createSelectSchema(apiKeys);
+export const webhookSelectSchema = createSelectSchema(webhooks);
+export const userSelectSchema = createSelectSchema(users);
+export const userPreferenceSelectSchema = createSelectSchema(userPreferences);
+export const userSecurityLogSelectSchema = createSelectSchema(userSecurityLogs);
+export const workCrewSelectSchema = createSelectSchema(workCrews);
+export const crewMemberSelectSchema = createSelectSchema(crewMembers);
+export const capturePointSelectSchema = createSelectSchema(capturePoints);
+export const panoramaSelectSchema = createSelectSchema(panoramas);
+export const hotspotSelectSchema = createSelectSchema(hotspots);
+export const equipmentSelectSchema = createSelectSchema(equipment);
+export const auditLogSelectSchema = createSelectSchema(auditLogs);
+
+// Organization list projection (GET /api/v1/organizations).
+export const organizationListSelectSchema = organizationSelectSchema.pick({
+  id: true,
+  name: true,
+  slug: true,
+  billingEmail: true,
+  createdAt: true,
+});
+
+// Org member list projection (GET /:orgId/members) — member row joined with user email/name.
+export const orgMemberWithUserSchema = z.object({
+  userId: z.string().uuid(),
+  role: z.string(),
+  createdAt: z.date(),
+  email: z.string(),
+  name: z.string().nullable(),
+});
+
+// Crew list projection (GET /:orgId/crews) — crew row joined with team lead name.
+export const crewWithLeadSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  trade: z.string(),
+  teamLeadId: z.string().uuid().nullable(),
+  projectId: z.string().uuid().nullable(),
+  createdAt: z.date(),
+  leadName: z.string().nullable(),
+});
+
+// API-key list projection (GET /:orgId/api-keys) and create response (POST adds raw key).
+export const apiKeyListSelectSchema = apiKeySelectSchema.pick({
+  id: true,
+  name: true,
+  prefix: true,
+  createdAt: true,
+});
+export const apiKeyWithKeySchema = apiKeySelectSchema.extend({ key: z.string() });
+
+// Billing checkout mock response.
+export const checkoutResponseSchema = z.object({
+  checkoutUrl: z.string(),
+  plan: z.string(),
+});
+
+// Org export (GET /:orgId/export) — JSON payload; the CSV branch returns a raw Response.
+export const exportDataSchema = z.object({
+  exportedAt: z.string(),
+  organizationId: z.string().uuid(),
+  projects: z.array(projectSelectSchema),
+  members: z.array(organizationMemberSelectSchema),
+  invoices: z.array(invoiceSelectSchema),
+});
+
+// Capture upload URL (POST /api/v1/captures/upload-url).
+export const uploadUrlResponseSchema = z.object({
+  uploadUrl: z.string(),
+  path: z.string(),
+});
+
+// Sync pull (GET /api/v1/sync/pull).
+export const syncPullResponseSchema = z.object({
+  timestamp: z.string(),
+  changes: z.object({
+    hotspots: z.array(hotspotSelectSchema),
+  }),
+});
+
+// Sync batch (POST /api/v1/sync/batch).
+export const syncBatchResponseSchema = z.object({
+  processed: z.array(z.object({
+    clientGuid: z.string(),
+    status: z.literal('synced'),
+    data: z.any(),
+  })),
+});
+
+// Platform-admin response shapes (GET /api/v1/admin/*).
+export const adminMetricsSchema = z.object({
+  totalOrganizations: z.number(),
+  totalProjects: z.number(),
+  totalSubscriptions: z.number(),
+  totalAuditEvents: z.number(),
+  status: z.string(),
+  uptime: z.number(),
+  timestamp: z.string(),
+});
+export const adminOrganizationSchema = organizationSelectSchema.extend({
+  subscription: z.any(),
+  projectCount: z.number(),
+  memberCount: z.number(),
+});
+export const adminAuditLogSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  orgName: z.string().nullable(),
+  userId: z.string().uuid().nullable(),
+  action: z.string(),
+  entityType: z.string(),
+  entityId: z.string().uuid(),
+  payload: z.any().nullable(),
+  createdAt: z.date(),
+});
+export const adminWebhookSchema = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  orgName: z.string().nullable(),
+  endpointUrl: z.string(),
+  isActive: z.boolean(),
+  events: z.array(z.string()),
+});
