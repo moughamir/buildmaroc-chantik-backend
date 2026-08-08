@@ -99,7 +99,10 @@ app.use('/admin/*', async (c) => {
   return c.text('Admin frontend not found', 404);
 });
 
-const frontendDir = process.env.FRONTEND_DIR || join(process.cwd(), '..', 'frontend');
+// Client SPA: serves the BUILT output (dist). The source tree is TSX/TS and
+// can't be served raw — since the React migration (v2.0.0), FRONTEND_DIR must
+// point at `frontend/dist` for single-server serving. Dev: use Vite on 5173.
+const frontendDir = process.env.FRONTEND_DIR || join(process.cwd(), '..', 'frontend', 'dist');
 
 // Garde-fou Personas : le mode développeur est piloté côté serveur.
 // Le contenu de la balise <meta name="chantik-dev-mode"> est injecté depuis

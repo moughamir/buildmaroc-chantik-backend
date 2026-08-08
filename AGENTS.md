@@ -63,7 +63,7 @@ Typecheck: `bunx tsc --noEmit` (currently passes, 0 errors). No tests, no linter
 | `SUPABASE_URL` | `src/routes/spatial.ts`, `src/routes/captures.ts` (storage URLs) |
 | `SUPABASE_SERVICE_ROLE_KEY` | `src/routes/spatial.ts`, `src/routes/captures.ts` |
 | `PORT` (default 8080) | `src/index.ts` |
-| `FRONTEND_DIR` | `src/index.ts` — client static files; defaults to `../frontend` ⚠️ **stale default since the React migration**: serving the source tree serves `src/main.tsx` as `application/octet-stream`. For backend-only serving set it to `../frontend/dist` (after `bun run build`) |
+| `FRONTEND_DIR` | `src/index.ts` — client static files; defaults to `../frontend/dist` (the BUILT output — the React source tree can't be served raw; run `bun run build` in `frontend/` first) |
 | `ADMIN_FRONTEND_DIR` (optional) | `src/index.ts` — admin console static files, defaults to `../admin-frontend/dist`; served at `/admin/*` |
 
 > **Note**: leave `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` empty for local dev — `@supabase/supabase-js`'s `createClient` throws at import on malformed placeholder URLs (spatial/captures only; auth no longer uses Supabase).
