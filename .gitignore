@@ -3,9 +3,13 @@ node_modules/
 
 # env
 .env
+.env.*-backup
 
 # git hook artifacts
 .agents/
+.claude/
+.factory/
+CLAUDE.md
 
 # repomix generated context
 chantik-backend.context.xml
