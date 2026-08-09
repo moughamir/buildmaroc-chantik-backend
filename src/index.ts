@@ -16,6 +16,7 @@ import { attendanceApp } from './routes/attendance';
 import { constructionRootApp } from './routes/construction-root';
 import { notesApp } from './routes/notes';
 import { pointageApp } from './routes/pointage';
+import { authApp } from './routes/auth';
 import { adminApp } from './routes/admin';
 
 let app = new OpenAPIHono<{ Variables: SessionVariables }>();
@@ -64,6 +65,7 @@ app.onError((err, c) => {
 // converted sub-app (same runtime instance — route() returns `this`).
 app.use('/api/v1/admin/*', adminGuard);
 app = app
+  .route('/api/v1/auth', authApp)
   .route('/api/v1/sync', syncApp)
   .route('/api/v1/captures', capturesApp)
   .route('/api/v1/organizations', organizationsApp)
@@ -80,11 +82,19 @@ app = app
 
 // OpenAPI document + Swagger UI (L6b). Reassign so AppType also carries the
 // doc route; must stay after all sub-app mounts so the doc covers every path.
+app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
+  type: 'http',
+  scheme: 'bearer',
+  description:
+    'Session token. Get one via POST /api/v1/auth/sign-in (or any better-auth sign-in), then paste it here. ' +
+    'In local dev you can also bypass auth entirely with the `x-user-id` header (see session middleware).',
+});
 app = app.doc('/api/v1/doc', {
   openapi: '3.0.0',
   info: { title: 'CHANTIK API', version: '1.0.0' },
+  security: [{ bearerAuth: [] }],
 });
-app.get('/api/v1/docs', swaggerUI({ url: '/api/v1/doc' }));
+app.get('/api/v1/docs', swaggerUI({ url: '/api/v1/doc', persistAuthorization: true }));
 
 // App type for the future typed RPC client (hc<AppType>).
 export type AppType = typeof app;

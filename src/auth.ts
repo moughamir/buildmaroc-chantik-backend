@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { organization } from 'better-auth/plugins';
+import { organization, bearer } from 'better-auth/plugins';
 import { db } from './db';
 import { users, sessions, accounts, organizations, organizationMembers } from './db/schema';
 import { eq } from 'drizzle-orm';
@@ -40,6 +40,10 @@ export const auth = betterAuth({
       allowUserToCreateOrganization: true,
       teams: { enabled: false },
     }),
+    // Enables Authorization: Bearer <sessionToken> as an alternative to
+    // cookies (used for API clients / Swagger UI testing). The session token
+    // is returned by sign-in; auth.api.getSession resolves it automatically.
+    bearer(),
   ],
   databaseHooks: {
     session: {

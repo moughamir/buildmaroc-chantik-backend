@@ -610,3 +610,30 @@ export const adminWebhookSchema = z.object({
   isActive: z.boolean(),
   events: z.array(z.string()),
 });
+
+// ============================================================================
+// 13. AUTH (OpenAPI-documented sign-in for Swagger / API clients)
+// ============================================================================
+
+// Sign-in with email/password. Returns the session token that must be sent as
+// `Authorization: Bearer <token>` on authenticated routes (better-auth bearer
+// plugin). The raw better-auth endpoints (/api/auth/*) stay mounted for the
+// frontends; this route exists so the OpenAPI spec exposes how to obtain a token.
+export const authSignInSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const authSignInResponseSchema = z.object({
+  token: z.string().describe('Session token — send as Authorization: Bearer <token>'),
+  user: z.object({
+    id: z.string(),
+    email: z.string().email(),
+    name: z.string().nullable().optional(),
+    image: z.string().nullable().optional(),
+    role: z.string().nullable().optional(),
+    emailVerified: z.boolean().optional(),
+    createdAt: z.date().optional(),
+    updatedAt: z.date().optional(),
+  }).passthrough(),
+});
