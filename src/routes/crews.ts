@@ -13,6 +13,7 @@ export const crewsApp = new OpenAPIHono({ defaultHook: validationErrorHook }).on
 const crewMemberCreateRoute = createRoute({
   method: 'post',
   path: '/{crewId}/members',
+  tags: ['crews'],
   request: {
     params: z.object({ crewId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: crewMemberSchema } }, required: true },

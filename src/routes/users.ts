@@ -21,6 +21,7 @@ export const usersApp = new OpenAPIHono<{ Variables: SessionVariables }>({ defau
 const meGetRoute = createRoute({
   method: 'get',
   path: '/me',
+  tags: ['users'],
   responses: {
     200: {
       description: 'Current user profile',
@@ -42,6 +43,7 @@ usersApp.openapi(meGetRoute, async (c) => {
 const mePatchRoute = createRoute({
   method: 'patch',
   path: '/me',
+  tags: ['users'],
   request: {
     body: { content: { 'application/json': { schema: userProfileUpdateSchema } }, required: true },
   },
@@ -71,6 +73,7 @@ usersApp.openapi(mePatchRoute, async (c) => {
 const mePreferencesGetRoute = createRoute({
   method: 'get',
   path: '/me/preferences',
+  tags: ['users'],
   responses: {
     200: {
       description: 'Current user preferences',
@@ -92,6 +95,7 @@ usersApp.openapi(mePreferencesGetRoute, async (c) => {
 const mePreferencesPatchRoute = createRoute({
   method: 'patch',
   path: '/me/preferences',
+  tags: ['users'],
   request: {
     body: { content: { 'application/json': { schema: userPreferencesUpdateSchema } }, required: true },
   },
@@ -127,6 +131,7 @@ usersApp.openapi(mePreferencesPatchRoute, async (c) => {
 const meSecurityLogsGetRoute = createRoute({
   method: 'get',
   path: '/me/security-logs',
+  tags: ['users'],
   responses: {
     200: {
       description: 'Security logs for the current user',

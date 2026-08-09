@@ -19,16 +19,17 @@ Bun + Hono (`OpenAPIHono` from `@hono/zod-openapi`) + **better-auth** + Drizzle 
 |---|---|---|
 | `/api/auth/*` | `src/auth.ts` | better-auth handlers (email/password + organization) |
 | `/api/v1/organizations` | `src/routes/organizations.ts` | Orgs, teams, members, RBAC, billing, org-scoped projects/crews/equipment |
-| `/api/v1/projects` | `src/routes/projects.ts` | Project CRUD, zones, health, attendance, daily logs, RFIs, change orders, blueprints |
+| `/api/v1/projects` | `src/routes/projects.ts` | Project CRUD, zones, health, attendance, daily logs, RFIs, change orders, blueprints (org-scoped project list/create live in `organizations.ts`) |
 | `/api/v1/users` | `src/routes/users.ts` | User profile, preferences, security logs |
 | `/api/v1/invitations` | `src/routes/invitations.ts` | Invitation acceptance |
 | `/api/v1/crews` | `src/routes/crews.ts` | Crew member assignment |
 | `/api/v1/sync` | `src/routes/sync.ts` | Offline-first batch sync |
 | `/api/v1/captures` | `src/routes/captures.ts` | Supabase upload URLs |
-| `/api/v1` | `src/routes/spatial.ts` | Zones, capture points, panoramas, hotspots |
-| `/api/v1` | `src/routes/attendance.ts` | Clock-in / clock-out |
-| `/api/v1` | `src/routes/construction-root.ts` | RFI/CO/equipment updates (root-level) |
-| `/api/v1` | `src/routes/pointage.ts` | Pointage records, trade catalog, subcontractors |
+| `/api/v1/spatial` | `src/routes/spatial.ts` | Zones, capture points, panoramas, hotspots |
+| `/api/v1` | `src/routes/attendance.ts` | Clock-in / clock-out (self-prefixed `/attendance/*`) |
+| `/api/v1/construction` | `src/routes/construction.ts` | RFI / change-order updates |
+| `/api/v1/equipment` | `src/routes/equipment.ts` | Equipment status/project/service updates (`PATCH /{eqId}`) |
+| `/api/v1` | `src/routes/pointage.ts` | Pointage records, trade catalog, subcontractors (self-prefixed `/pointage/*`, `/projects/:projectId/pointage`) |
 | `/api/v1/projects/:projectId/notes` | `src/routes/notes.ts` | Project notes CRUD |
 | `/api/v1/admin` | `src/routes/admin.ts` | Super-admin console API (guarded) |
 

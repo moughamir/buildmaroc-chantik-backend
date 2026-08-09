@@ -13,6 +13,7 @@ export const authApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onE
 const signInRoute = createRoute({
   method: 'post',
   path: '/sign-in',
+  tags: ['auth'],
   request: {
     body: { content: { 'application/json': { schema: authSignInSchema } }, required: true },
   },

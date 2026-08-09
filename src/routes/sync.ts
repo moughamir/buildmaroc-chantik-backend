@@ -14,6 +14,7 @@ export const syncApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onE
 const syncPullRoute = createRoute({
   method: 'get',
   path: '/pull',
+  tags: ['sync'],
   request: {
     query: z.object({ since: z.string().optional() }),
   },
@@ -42,6 +43,7 @@ syncApp.openapi(syncPullRoute, async (c) => {
 const syncBatchRoute = createRoute({
   method: 'post',
   path: '/batch',
+  tags: ['sync'],
   request: {
     body: { content: { 'application/json': { schema: syncBatchSchema } }, required: true },
   },

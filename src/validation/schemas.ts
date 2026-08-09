@@ -474,7 +474,7 @@ export const removedResponseSchema = z.object({ removed: z.boolean() });
 
 // ============================================================================
 // 14. RESPONSE SCHEMAS — L6e converted routers (orgs, users, crews, sync,
-//     captures, spatial, attendance, construction-root, admin)
+//     captures, spatial, attendance, construction, equipment, admin)
 // ============================================================================
 
 export const organizationSelectSchema = createSelectSchema(organizations);

@@ -37,7 +37,6 @@ import type { ProjectInput, ZoneCreateInput, RfiInput, ChangeOrderInput, Bluepri
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
 
 const projectIdParam = { projectId: z.string().uuid() };
-const orgIdParam = { orgId: z.string().uuid() };
 
 // L6c: shared 400 validation shape { error: { message, issues } } for invalid
 // bodies / params / query (defaultHook) and malformed JSON (onError).
@@ -46,6 +45,7 @@ export const projectsApp = new OpenAPIHono({ defaultHook: validationErrorHook })
 const listProjectsRoute = createRoute({
   method: 'get',
   path: '/',
+  tags: ['projects'],
   responses: {
     200: {
       description: 'List the authenticated user\'s default-org projects (or a given org\'s)',
@@ -91,57 +91,10 @@ projectsApp.openapi(listProjectsRoute, async (c) => {
   return c.json(result);
 });
 
-const orgProjectsListRoute = createRoute({
-  method: 'get',
-  path: '/{orgId}/projects',
-  request: { params: z.object(orgIdParam) },
-  responses: {
-    200: {
-      description: 'List projects for an explicit organization',
-      content: { 'application/json': { schema: z.array(projectSelectSchema) } },
-    },
-  },
-});
-
-projectsApp.openapi(orgProjectsListRoute, async (c) => {
-  const orgId = c.req.param('orgId');
-  const result = await db.select().from(projects).where(eq(projects.organizationId, orgId));
-  return c.json(result);
-});
-
-const orgProjectsCreateRoute = createRoute({
-  method: 'post',
-  path: '/{orgId}/projects',
-  request: {
-    params: z.object(orgIdParam),
-    body: { content: { 'application/json': { schema: projectSchema } }, required: true },
-  },
-  responses: {
-    201: {
-      description: 'Project created',
-      content: { 'application/json': { schema: projectSelectSchema } },
-    },
-  },
-});
-
-projectsApp.openapi(orgProjectsCreateRoute, async (c) => {
-  const orgId = c.req.param('orgId');
-  const input = c.req.valid('json') as ProjectInput;
-  const [project] = await db.insert(projects).values({
-    organizationId: orgId,
-    name: input.name,
-    code: input.code,
-    region: input.region,
-    coordinates: input.coordinates,
-    status: input.status || 'planning',
-  }).returning();
-
-  return c.json(project, 201);
-});
-
 const projectGetRoute = createRoute({
   method: 'get',
   path: '/{projectId}',
+  tags: ['projects'],
   request: { params: z.object(projectIdParam) },
   responses: {
     200: {
@@ -234,6 +187,7 @@ async function assembleCaptures(zoneRows: (typeof zones.$inferSelect)[]): Promis
 const projectPatchRoute = createRoute({
   method: 'patch',
   path: '/{projectId}',
+  tags: ['projects'],
   request: {
     params: z.object(projectIdParam),
     body: { content: { 'application/json': { schema: projectSchema } }, required: true },
@@ -271,6 +225,7 @@ projectsApp.openapi(projectPatchRoute, async (c) => {
 const projectHealthRoute = createRoute({
   method: 'get',
   path: '/{projectId}/health',
+  tags: ['projects'],
   request: { params: z.object(projectIdParam) },
   responses: {
     200: {
@@ -293,6 +248,7 @@ projectsApp.openapi(projectHealthRoute, async (c) => {
 const projectZonesListRoute = createRoute({
   method: 'get',
   path: '/{projectId}/zones',
+  tags: ['projects'],
   request: { params: z.object(projectIdParam) },
   responses: {
     200: {
@@ -311,6 +267,7 @@ projectsApp.openapi(projectZonesListRoute, async (c) => {
 const projectZonesCreateRoute = createRoute({
   method: 'post',
   path: '/{projectId}/zones',
+  tags: ['projects'],
   request: {
     params: z.object(projectIdParam),
     body: { content: { 'application/json': { schema: zoneCreateSchema } }, required: true },
@@ -338,6 +295,7 @@ projectsApp.openapi(projectZonesCreateRoute, async (c) => {
 const projectAttendanceRoute = createRoute({
   method: 'get',
   path: '/{projectId}/attendance',
+  tags: ['projects'],
   request: { params: z.object(projectIdParam) },
   responses: {
     200: {
@@ -369,6 +327,7 @@ projectsApp.openapi(projectAttendanceRoute, async (c) => {
 const projectDailyLogsListRoute = createRoute({
   method: 'get',
   path: '/{projectId}/daily-logs',
+  tags: ['projects'],
   request: { params: z.object(projectIdParam) },
   responses: {
     200: {
@@ -387,6 +346,7 @@ projectsApp.openapi(projectDailyLogsListRoute, async (c) => {
 const projectDailyLogsCreateRoute = createRoute({
   method: 'post',
   path: '/{projectId}/daily-logs',
+  tags: ['projects'],
   request: {
     params: z.object(projectIdParam),
     body: { content: { 'application/json': { schema: siteDailyLogSchema } }, required: true },
@@ -418,6 +378,7 @@ projectsApp.openapi(projectDailyLogsCreateRoute, async (c) => {
 const projectRfisListRoute = createRoute({
   method: 'get',
   path: '/{projectId}/rfis',
+  tags: ['projects'],
   request: { params: z.object(projectIdParam) },
   responses: {
     200: {
@@ -436,6 +397,7 @@ projectsApp.openapi(projectRfisListRoute, async (c) => {
 const projectRfisCreateRoute = createRoute({
   method: 'post',
   path: '/{projectId}/rfis',
+  tags: ['projects'],
   request: {
     params: z.object(projectIdParam),
     body: { content: { 'application/json': { schema: rfiSchema } }, required: true },
@@ -472,6 +434,7 @@ projectsApp.openapi(projectRfisCreateRoute, async (c) => {
 const projectChangeOrdersListRoute = createRoute({
   method: 'get',
   path: '/{projectId}/change-orders',
+  tags: ['projects'],
   request: { params: z.object(projectIdParam) },
   responses: {
     200: {
@@ -490,6 +453,7 @@ projectsApp.openapi(projectChangeOrdersListRoute, async (c) => {
 const projectChangeOrdersCreateRoute = createRoute({
   method: 'post',
   path: '/{projectId}/change-orders',
+  tags: ['projects'],
   request: {
     params: z.object(projectIdParam),
     body: { content: { 'application/json': { schema: changeOrderSchema } }, required: true },
@@ -523,6 +487,7 @@ projectsApp.openapi(projectChangeOrdersCreateRoute, async (c) => {
 const projectBlueprintsListRoute = createRoute({
   method: 'get',
   path: '/{projectId}/blueprints',
+  tags: ['projects'],
   request: { params: z.object(projectIdParam) },
   responses: {
     200: {
@@ -541,6 +506,7 @@ projectsApp.openapi(projectBlueprintsListRoute, async (c) => {
 const projectBlueprintsCreateRoute = createRoute({
   method: 'post',
   path: '/{projectId}/blueprints',
+  tags: ['projects'],
   request: {
     params: z.object(projectIdParam),
     body: { content: { 'application/json': { schema: blueprintSheetSchema } }, required: true },

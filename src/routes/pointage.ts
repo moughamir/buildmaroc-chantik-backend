@@ -22,6 +22,7 @@ export const pointageApp = new OpenAPIHono({ defaultHook: validationErrorHook })
 const pointageListRoute = createRoute({
   method: 'get',
   path: '/projects/{projectId}/pointage',
+  tags: ['pointage'],
   request: {
     params: z.object({ projectId: z.string().uuid() }),
     query: pointageQuerySchema,
@@ -54,6 +55,7 @@ pointageApp.openapi(pointageListRoute, async (c) => {
 const pointageCreateRoute = createRoute({
   method: 'post',
   path: '/projects/{projectId}/pointage',
+  tags: ['pointage'],
   request: {
     params: z.object({ projectId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: pointageRecordCreateSchema } }, required: true },
@@ -86,6 +88,7 @@ pointageApp.openapi(pointageCreateRoute, async (c) => {
 const pointagePatchRoute = createRoute({
   method: 'patch',
   path: '/pointage/{id}',
+  tags: ['pointage'],
   request: {
     params: z.object({ id: z.string().uuid() }),
     body: { content: { 'application/json': { schema: pointageRecordUpdateSchema } }, required: true },
@@ -119,6 +122,7 @@ pointageApp.openapi(pointagePatchRoute, async (c) => {
 const pointageDeleteRoute = createRoute({
   method: 'delete',
   path: '/pointage/{id}',
+  tags: ['pointage'],
   request: {
     params: z.object({ id: z.string().uuid() }),
   },
@@ -143,6 +147,7 @@ pointageApp.openapi(pointageDeleteRoute, async (c) => {
 const tradeCatalogRoute = createRoute({
   method: 'get',
   path: '/trade-catalog',
+  tags: ['pointage'],
   responses: {
     200: {
       description: 'List the trade catalog',

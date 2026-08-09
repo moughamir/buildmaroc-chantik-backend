@@ -13,7 +13,8 @@ import { invitationsRouter } from './routes/invitations';
 import { crewsApp } from './routes/crews';
 import { spatialApp } from './routes/spatial';
 import { attendanceApp } from './routes/attendance';
-import { constructionRootApp } from './routes/construction-root';
+import { constructionApp } from './routes/construction';
+import { equipmentApp } from './routes/equipment';
 import { notesApp } from './routes/notes';
 import { pointageApp } from './routes/pointage';
 import { authApp } from './routes/auth';
@@ -73,9 +74,10 @@ app = app
   .route('/api/v1/projects', projectsApp)
   .route('/api/v1/invitations', invitationsRouter)
   .route('/api/v1/crews', crewsApp)
-  .route('/api/v1', spatialApp)
+  .route('/api/v1/spatial', spatialApp)
   .route('/api/v1', attendanceApp)
-  .route('/api/v1', constructionRootApp)
+  .route('/api/v1/construction', constructionApp)
+  .route('/api/v1/equipment', equipmentApp)
   .route('/api/v1', pointageApp)
   .route('/api/v1/projects/:projectId/notes', notesApp)
   .route('/api/v1/admin', adminApp);

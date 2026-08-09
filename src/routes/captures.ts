@@ -24,6 +24,7 @@ export const capturesApp = new OpenAPIHono({ defaultHook: validationErrorHook })
 const uploadUrlRoute = createRoute({
   method: 'post',
   path: '/upload-url',
+  tags: ['captures'],
   request: {
     body: { content: { 'application/json': { schema: uploadUrlSchema } }, required: true },
   },

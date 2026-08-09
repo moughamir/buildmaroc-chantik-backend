@@ -27,6 +27,7 @@ export const adminApp = new OpenAPIHono({ defaultHook: validationErrorHook }).on
 const adminMetricsRoute = createRoute({
   method: 'get',
   path: '/metrics',
+  tags: ['admin'],
   responses: {
     200: {
       description: 'System metrics & overview',
@@ -56,6 +57,7 @@ adminApp.openapi(adminMetricsRoute, async (c) => {
 const adminOrganizationsRoute = createRoute({
   method: 'get',
   path: '/organizations',
+  tags: ['admin'],
   responses: {
     200: {
       description: 'All tenant organizations with subscription/project/member counts',
@@ -87,6 +89,7 @@ adminApp.openapi(adminOrganizationsRoute, async (c) => {
 const adminAuditLogsRoute = createRoute({
   method: 'get',
   path: '/audit-logs',
+  tags: ['admin'],
   responses: {
     200: {
       description: 'Global immutable audit logs',
@@ -120,6 +123,7 @@ adminApp.openapi(adminAuditLogsRoute, async (c) => {
 const adminWebhooksRoute = createRoute({
   method: 'get',
   path: '/webhooks',
+  tags: ['admin'],
   responses: {
     200: {
       description: 'Global API keys & webhooks monitor',

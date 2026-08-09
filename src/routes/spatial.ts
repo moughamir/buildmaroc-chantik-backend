@@ -38,6 +38,7 @@ export const spatialApp = new OpenAPIHono({ defaultHook: validationErrorHook }).
 const zoneCapturePointsListRoute = createRoute({
   method: 'get',
   path: '/zones/{zoneId}/capture-points',
+  tags: ['spatial'],
   request: { params: z.object({ zoneId: z.string().uuid() }) },
   responses: {
     200: {
@@ -56,6 +57,7 @@ spatialApp.openapi(zoneCapturePointsListRoute, async (c) => {
 const zoneCapturePointsCreateRoute = createRoute({
   method: 'post',
   path: '/zones/{zoneId}/capture-points',
+  tags: ['spatial'],
   request: {
     params: z.object({ zoneId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: capturePointCreateSchema } }, required: true },
@@ -83,6 +85,7 @@ spatialApp.openapi(zoneCapturePointsCreateRoute, async (c) => {
 const panoramaCreateRoute = createRoute({
   method: 'post',
   path: '/capture-points/{cpId}/panoramas',
+  tags: ['spatial'],
   request: {
     params: z.object({ cpId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: panoramaUploadSchema } }, required: true },
@@ -112,6 +115,7 @@ spatialApp.openapi(panoramaCreateRoute, async (c) => {
 const panoramaListRoute = createRoute({
   method: 'get',
   path: '/capture-points/{cpId}/panoramas',
+  tags: ['spatial'],
   request: { params: z.object({ cpId: z.string().uuid() }) },
   responses: {
     200: {
@@ -132,6 +136,7 @@ spatialApp.openapi(panoramaListRoute, async (c) => {
 const panoramaAssetRoute = createRoute({
   method: 'get',
   path: '/panoramas/{panoramaId}/asset',
+  tags: ['spatial'],
   request: { params: z.object({ panoramaId: z.string().uuid() }) },
   responses: {
     302: {
@@ -168,6 +173,7 @@ spatialApp.openapi(panoramaAssetRoute, async (c) => {
 const hotspotListRoute = createRoute({
   method: 'get',
   path: '/panoramas/{panoramaId}/hotspots',
+  tags: ['spatial'],
   request: { params: z.object({ panoramaId: z.string().uuid() }) },
   responses: {
     200: {
@@ -186,6 +192,7 @@ spatialApp.openapi(hotspotListRoute, async (c) => {
 const hotspotCreateRoute = createRoute({
   method: 'post',
   path: '/panoramas/{panoramaId}/hotspots',
+  tags: ['spatial'],
   request: {
     params: z.object({ panoramaId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: createHotspotRestSchema } }, required: true },
@@ -217,6 +224,7 @@ spatialApp.openapi(hotspotCreateRoute, async (c) => {
 const hotspotPatchRoute = createRoute({
   method: 'patch',
   path: '/hotspots/{hotspotId}',
+  tags: ['spatial'],
   request: {
     params: z.object({ hotspotId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: updateHotspotRestSchema } }, required: true },

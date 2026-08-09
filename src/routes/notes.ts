@@ -22,6 +22,7 @@ export const notesApp = new OpenAPIHono({ defaultHook: validationErrorHook }).on
 const notesListRoute = createRoute({
   method: 'get',
   path: '/',
+  tags: ['notes'],
   responses: {
     200: {
       description: 'List notes for the project',
@@ -39,6 +40,7 @@ notesApp.openapi(notesListRoute, async (c) => {
 const noteCreateRoute = createRoute({
   method: 'post',
   path: '/',
+  tags: ['notes'],
   request: {
     body: { content: { 'application/json': { schema: noteCreateSchema } }, required: true },
   },
@@ -66,6 +68,7 @@ notesApp.openapi(noteCreateRoute, async (c) => {
 const notePatchRoute = createRoute({
   method: 'patch',
   path: '/{noteId}',
+  tags: ['notes'],
   request: {
     params: z.object({ noteId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: noteUpdateSchema } }, required: true },
@@ -100,6 +103,7 @@ notesApp.openapi(notePatchRoute, async (c) => {
 const noteDeleteRoute = createRoute({
   method: 'delete',
   path: '/{noteId}',
+  tags: ['notes'],
   request: {
     params: z.object({ noteId: z.string().uuid() }),
   },

@@ -89,6 +89,7 @@ export const organizationsApp = new OpenAPIHono<{ Variables: SessionVariables }>
 const organizationsListRoute = createRoute({
   method: 'get',
   path: '/',
+  tags: ['organizations'],
   responses: {
     200: {
       description: 'Organizations the authenticated user belongs to',
@@ -118,6 +119,7 @@ organizationsApp.openapi(organizationsListRoute, async (c) => {
 const organizationsCreateRoute = createRoute({
   method: 'post',
   path: '/',
+  tags: ['organizations'],
   request: {
     body: { content: { 'application/json': { schema: organizationSchema } }, required: true },
   },
@@ -150,6 +152,7 @@ organizationsApp.openapi(organizationsCreateRoute, async (c) => {
 const organizationGetRoute = createRoute({
   method: 'get',
   path: '/{orgId}',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -172,6 +175,7 @@ organizationsApp.openapi(organizationGetRoute, async (c) => {
 const organizationPatchRoute = createRoute({
   method: 'patch',
   path: '/{orgId}',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: updateOrganizationSchema } }, required: true },
@@ -202,6 +206,7 @@ organizationsApp.openapi(organizationPatchRoute, async (c) => {
 const organizationDeleteRoute = createRoute({
   method: 'delete',
   path: '/{orgId}',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -224,6 +229,7 @@ organizationsApp.openapi(organizationDeleteRoute, async (c) => {
 const organizationMembersListRoute = createRoute({
   method: 'get',
   path: '/{orgId}/members',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -253,6 +259,7 @@ organizationsApp.openapi(organizationMembersListRoute, async (c) => {
 const organizationInvitationCreateRoute = createRoute({
   method: 'post',
   path: '/{orgId}/invitations',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: organizationInvitationSchema } }, required: true },
@@ -285,6 +292,7 @@ organizationsApp.openapi(organizationInvitationCreateRoute, async (c) => {
 const customRolesListRoute = createRoute({
   method: 'get',
   path: '/{orgId}/roles',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -303,6 +311,7 @@ organizationsApp.openapi(customRolesListRoute, async (c) => {
 const customRoleCreateRoute = createRoute({
   method: 'post',
   path: '/{orgId}/roles',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: customRoleCreateSchema } }, required: true },
@@ -329,6 +338,7 @@ organizationsApp.openapi(customRoleCreateRoute, async (c) => {
 const customRolePatchRoute = createRoute({
   method: 'patch',
   path: '/{orgId}/roles/{roleId}',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid(), roleId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: customRoleUpdateSchema } }, required: true },
@@ -374,6 +384,7 @@ organizationsApp.openapi(customRolePatchRoute, async (c) => {
 const userRoleAssignRoute = createRoute({
   method: 'post',
   path: '/{orgId}/users/{userId}/roles',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid(), userId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: userRoleAssignSchema } }, required: true },
@@ -402,6 +413,7 @@ organizationsApp.openapi(userRoleAssignRoute, async (c) => {
 const subscriptionGetRoute = createRoute({
   method: 'get',
   path: '/{orgId}/subscription',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -424,6 +436,7 @@ organizationsApp.openapi(subscriptionGetRoute, async (c) => {
 const checkoutCreateRoute = createRoute({
   method: 'post',
   path: '/{orgId}/subscription/checkout',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: checkoutSessionSchema } }, required: true },
@@ -455,6 +468,7 @@ organizationsApp.openapi(checkoutCreateRoute, async (c) => {
 const invoicesListRoute = createRoute({
   method: 'get',
   path: '/{orgId}/invoices',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -473,6 +487,7 @@ organizationsApp.openapi(invoicesListRoute, async (c) => {
 const apiKeysListRoute = createRoute({
   method: 'get',
   path: '/{orgId}/api-keys',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -491,6 +506,7 @@ organizationsApp.openapi(apiKeysListRoute, async (c) => {
 const apiKeyCreateRoute = createRoute({
   method: 'post',
   path: '/{orgId}/api-keys',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: apiKeyCreateSchema } }, required: true },
@@ -523,6 +539,7 @@ organizationsApp.openapi(apiKeyCreateRoute, async (c) => {
 const apiKeyDeleteRoute = createRoute({
   method: 'delete',
   path: '/{orgId}/api-keys/{keyId}',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid(), keyId: z.string().uuid() }),
   },
@@ -548,6 +565,7 @@ organizationsApp.openapi(apiKeyDeleteRoute, async (c) => {
 const webhooksListRoute = createRoute({
   method: 'get',
   path: '/{orgId}/webhooks',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -566,6 +584,7 @@ organizationsApp.openapi(webhooksListRoute, async (c) => {
 const webhookCreateRoute = createRoute({
   method: 'post',
   path: '/{orgId}/webhooks',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: webhookRegisterSchema } }, required: true },
@@ -594,6 +613,7 @@ organizationsApp.openapi(webhookCreateRoute, async (c) => {
 const webhookDeleteRoute = createRoute({
   method: 'delete',
   path: '/{orgId}/webhooks/{webhookId}',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid(), webhookId: z.string().uuid() }),
   },
@@ -619,6 +639,7 @@ organizationsApp.openapi(webhookDeleteRoute, async (c) => {
 const orgProjectsListRoute = createRoute({
   method: 'get',
   path: '/{orgId}/projects',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -637,6 +658,7 @@ organizationsApp.openapi(orgProjectsListRoute, async (c) => {
 const orgProjectCreateRoute = createRoute({
   method: 'post',
   path: '/{orgId}/projects',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: projectSchema } }, required: true },
@@ -667,6 +689,7 @@ organizationsApp.openapi(orgProjectCreateRoute, async (c) => {
 const orgCrewsListRoute = createRoute({
   method: 'get',
   path: '/{orgId}/crews',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -698,6 +721,7 @@ organizationsApp.openapi(orgCrewsListRoute, async (c) => {
 const orgCrewCreateRoute = createRoute({
   method: 'post',
   path: '/{orgId}/crews',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: workCrewSchema } }, required: true },
@@ -727,6 +751,7 @@ organizationsApp.openapi(orgCrewCreateRoute, async (c) => {
 const orgEquipmentListRoute = createRoute({
   method: 'get',
   path: '/{orgId}/equipment',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -745,6 +770,7 @@ organizationsApp.openapi(orgEquipmentListRoute, async (c) => {
 const orgEquipmentCreateRoute = createRoute({
   method: 'post',
   path: '/{orgId}/equipment',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: equipmentSchema } }, required: true },
@@ -776,6 +802,7 @@ organizationsApp.openapi(orgEquipmentCreateRoute, async (c) => {
 const teamCreateRoute = createRoute({
   method: 'post',
   path: '/{orgId}/teams',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: teamCreateSchema } }, required: true },
@@ -802,6 +829,7 @@ organizationsApp.openapi(teamCreateRoute, async (c) => {
 const teamMemberAssignRoute = createRoute({
   method: 'post',
   path: '/{orgId}/teams/{teamId}/members',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid(), teamId: z.string().uuid() }),
     body: { content: { 'application/json': { schema: teamMemberAssignSchema } }, required: true },
@@ -829,6 +857,7 @@ organizationsApp.openapi(teamMemberAssignRoute, async (c) => {
 const organizationMemberDeleteRoute = createRoute({
   method: 'delete',
   path: '/{orgId}/members/{userId}',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid(), userId: z.string().uuid() }),
   },
@@ -861,6 +890,7 @@ organizationsApp.openapi(organizationMemberDeleteRoute, async (c) => {
 const orgAuditLogsListRoute = createRoute({
   method: 'get',
   path: '/{orgId}/audit-logs',
+  tags: ['organizations'],
   request: { params: z.object({ orgId: z.string().uuid() }) },
   responses: {
     200: {
@@ -879,6 +909,7 @@ organizationsApp.openapi(orgAuditLogsListRoute, async (c) => {
 const orgExportRoute = createRoute({
   method: 'get',
   path: '/{orgId}/export',
+  tags: ['organizations'],
   request: {
     params: z.object({ orgId: z.string().uuid() }),
     query: z.object({ format: z.string().optional() }),

@@ -18,6 +18,7 @@ export const attendanceApp = new OpenAPIHono({ defaultHook: validationErrorHook 
 const clockInRoute = createRoute({
   method: 'post',
   path: '/attendance/clock-in',
+  tags: ['attendance'],
   request: {
     body: { content: { 'application/json': { schema: attendanceClockInSchema } }, required: true },
   },
@@ -46,6 +47,7 @@ attendanceApp.openapi(clockInRoute, async (c) => {
 const clockOutRoute = createRoute({
   method: 'post',
   path: '/attendance/clock-out',
+  tags: ['attendance'],
   request: {
     body: { content: { 'application/json': { schema: attendanceClockOutSchema } }, required: true },
   },
