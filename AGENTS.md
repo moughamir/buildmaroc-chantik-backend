@@ -6,7 +6,7 @@ Bun + Hono (`OpenAPIHono` from `@hono/zod-openapi`) + **better-auth** + Drizzle 
 
 ## Entrypoint & wiring
 
-- `src/index.ts` — `OpenAPIHono` app. Mounts `/api/auth/*` (better-auth) first, then all `/api/v1/*` route groups behind `sessionMiddleware`, then `adminGuard` for `/api/v1/admin`. Serves client frontend + admin console static files with SPA fallback and dev-mode meta injection.
+- `src/index.ts` — `OpenAPIHono` app. Mounts `/api/auth/*` (better-auth) first, then all `/api/v1/*` route groups behind `sessionMiddleware`, then `adminGuard` for `/api/v1/admin`. Serves the API + OpenAPI docs only — no UI; consuming origins are set via `CORS_ORIGINS`.
 - Mount order matters: better-auth handlers are mounted before the session middleware; admin routes are mounted with the guard applied.
 - To add a new route group: create `src/routes/<name>.ts`, export a `Hono` instance, then import and mount it in `src/index.ts` via `app.route('/api/<name>', router)` (chain `.route()` calls so the `AppType` accumulates).
 - **`export type AppType = typeof app`** — consumed by the admin frontend's typed Hono RPC client (`hc` from `hono/client`).
@@ -49,7 +49,7 @@ cp .env.example .env   # then set DATABASE_URL, BETTER_AUTH_SECRET, BASE_URL
 bun run dev            # bun run --hot src/index.ts
 ```
 
-Two-server frontend dev: run Vite (`cd frontend && bun run dev`, port 5173, `/api` proxied to 8080) alongside. Single-server serving requires the frontend built (`FRONTEND_DIR=../frontend/dist`).
+Frontend dev: run Vite (`cd frontend && bun run dev`, port 5173, `/api` proxied to 8080) alongside the backend. Admin dev: `cd admin-frontend && bun run dev` (Vite also proxies `/api` → 8080). The backend never serves UI — frontends are hosted independently.
 
 Typecheck: `bunx tsc --noEmit` (currently passes, 0 errors). No tests, no linter, no build script — `package.json` has `dev` + DB scripts only.
 
@@ -63,14 +63,13 @@ Typecheck: `bunx tsc --noEmit` (currently passes, 0 errors). No tests, no linter
 | `SUPABASE_URL` | `src/routes/spatial.ts`, `src/routes/captures.ts` (storage URLs) |
 | `SUPABASE_SERVICE_ROLE_KEY` | `src/routes/spatial.ts`, `src/routes/captures.ts` |
 | `PORT` (default 8080) | `src/index.ts` |
-| `FRONTEND_DIR` | `src/index.ts` — client static files; defaults to `../frontend/dist` (the BUILT output — the React source tree can't be served raw; run `bun run build` in `frontend/` first) |
-| `ADMIN_FRONTEND_DIR` (optional) | `src/index.ts` — admin console static files, defaults to `../admin-frontend/dist`; served at `/admin/*` |
+| `CORS_ORIGINS` (default `http://localhost:5173`) | `src/index.ts` — comma-separated UI origins allowed to call the API (backend serves no UI) |
 
 > **Note**: leave `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` empty for local dev — `@supabase/supabase-js`'s `createClient` throws at import on malformed placeholder URLs (spatial/captures only; auth no longer uses Supabase).
 
-## Architecture: Unified Server
+## Architecture: API-only server
 
-The backend serves the API (`/api/v1/...`, `/api/auth/*`, `/api/v1/docs` Swagger UI), the admin console (`/admin/*` from `admin-frontend/dist`), and the client SPA (from `FRONTEND_DIR`) on a single Bun server on port 8080, with SPA fallback and dev-mode meta injection for the client `index.html`.
+The backend is UI-agnostic: it exposes the REST API (`/api/v1/...`), better-auth (`/api/auth/*`), and the OpenAPI spec (`/api/v1/doc` JSON, `/api/v1/docs` Swagger UI) on port 8080 — and nothing else. No static files, no SPA fallback, no dev-mode meta injection. Frontends (client SPA, admin console) are hosted independently and are granted API access via `CORS_ORIGINS`.
 
 ## DB
 

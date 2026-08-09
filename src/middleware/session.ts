@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { createHash } from 'node:crypto';
 import { auth } from '../auth';
 import { db } from '../db';
 import { organizationMembers } from '../db/schema';
@@ -13,6 +14,26 @@ export type SessionVariables = {
 };
 
 type SessionCtx = Context<{ Variables: SessionVariables }>;
+
+// Deterministic UUID v5 (SHA-1, name-based, DNS namespace) so dev-bypass ids
+// that aren't valid UUIDs (e.g. 'dev-admin-user', 'super-admin') stay
+// type-safe when compared against uuid columns (users.id,
+// organization_members.user_id, ...) — they simply match no rows instead of
+// crashing Postgres with "invalid input syntax for type uuid".
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DNS_NAMESPACE = Buffer.from('6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'hex');
+
+function normalizeDevUserId(raw: string): string {
+  if (UUID_RE.test(raw)) return raw;
+  const digest = createHash('sha1')
+    .update(DNS_NAMESPACE)
+    .update(raw, 'utf8')
+    .digest();
+  digest[6] = (digest[6] & 0x0f) | 0x50; // version 5
+  digest[8] = (digest[8] & 0x3f) | 0x80; // RFC 4122 variant
+  const hex = digest.subarray(0, 16).toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
 
 /**
  * Replaces src/middleware/auth.ts (Supabase JWT). Auth is now handled by
@@ -65,10 +86,13 @@ export async function sessionMiddleware(c: SessionCtx, next: () => Promise<void>
   // Dev-only bypass: hard-gated to non-production, header present AND no
   // Authorization header. Never evaluated in production.
   if (!isProd) {
-    const devUserId = c.req.header('x-user-id');
-    if (devUserId && !c.req.header('Authorization')) {
+    const rawDevUserId = c.req.header('x-user-id');
+    if (rawDevUserId && !c.req.header('Authorization')) {
       // Tolerant org resolution: a dev id may not be a real user row (e.g.
       // 'super-admin' for admin routes) → orgId stays null rather than 500ing.
+      // Non-UUID ids are normalized to a deterministic UUID so downstream
+      // uuid-column comparisons match no rows instead of crashing.
+      const devUserId = normalizeDevUserId(rawDevUserId);
       let orgId: string | null = null;
       try {
         const [m] = await db

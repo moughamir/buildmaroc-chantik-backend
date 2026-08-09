@@ -1,7 +1,6 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { cors } from 'hono/cors';
-import { join } from 'node:path';
 import { auth } from './auth';
 import { sessionMiddleware, type SessionVariables } from './middleware/session';
 import { adminGuard } from './middleware/admin';
@@ -35,8 +34,15 @@ app.use('*', async (c, next) => {
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 app.get('/api/v1/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
+// Agnostic API: allowed origins are configured by the UI hosts (never assumed).
+// Comma-separated list, e.g. CORS_ORIGINS=https://app.example.com,https://admin.example.com
+const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use('*', cors({
-  origin: ['http://localhost:8080', 'http://localhost:5173'],
+  origin: corsOrigins,
   credentials: true,
   allowHeaders: ['Content-Type', 'Authorization', 'x-user-id'],
 }));
@@ -80,90 +86,6 @@ app.get('/api/v1/docs', swaggerUI({ url: '/api/v1/doc' }));
 
 // App type for the future typed RPC client (hc<AppType>).
 export type AppType = typeof app;
-
-const adminFrontendDir = process.env.ADMIN_FRONTEND_DIR || join(process.cwd(), '..', 'admin-frontend', 'dist');
-
-app.use('/admin/*', async (c) => {
-  const url = new URL(c.req.url);
-  const subPath = url.pathname.replace(/^\/admin/, '') || '/index.html';
-  const filePath = join(adminFrontendDir, subPath === '/' ? 'index.html' : subPath);
-  const exists = await Bun.file(filePath).exists();
-  if (exists) {
-    const file = Bun.file(filePath);
-    return new Response(file, { headers: { 'Content-Type': getContentType(filePath) } });
-  }
-  const indexFile = join(adminFrontendDir, 'index.html');
-  if (await Bun.file(indexFile).exists()) {
-    return new Response(Bun.file(indexFile), { headers: { 'Content-Type': 'text/html' } });
-  }
-  return c.text('Admin frontend not found', 404);
-});
-
-// Client SPA: serves the BUILT output (dist). The source tree is TSX/TS and
-// can't be served raw — since the React migration (v2.0.0), FRONTEND_DIR must
-// point at `frontend/dist` for single-server serving. Dev: use Vite on 5173.
-const frontendDir = process.env.FRONTEND_DIR || join(process.cwd(), '..', 'frontend', 'dist');
-
-// Garde-fou Personas : le mode développeur est piloté côté serveur.
-// Le contenu de la balise <meta name="chantik-dev-mode"> est injecté depuis
-// NODE_ENV à chaque service d'index.html ("true" hors production, "false" en
-// production). Seul l'attribut `content` est réécrit — le reste du HTML est
-// conservé à l'identique. Le frontend ne lit plus aucun paramètre d'URL.
-const DEV_MODE_META_PATTERN = /(<meta\s+name="chantik-dev-mode"\s+content=")[^"]*(")/;
-
-async function serveSpaIndex() {
-  const indexFile = join(frontendDir, 'index.html');
-  if (!(await Bun.file(indexFile).exists())) return null;
-  const devModeContent = (process.env.NODE_ENV !== 'production').toString();
-  const html = (await Bun.file(indexFile).text()).replace(
-    DEV_MODE_META_PATTERN,
-    `$1${devModeContent}$2`,
-  );
-  return new Response(html, { headers: { 'Content-Type': 'text/html' } });
-}
-
-app.use('*', async (c, next) => {
-  const url = new URL(c.req.url);
-  if (url.pathname.startsWith('/api/')) {
-    await next();
-    return;
-  }
-
-  // index.html (racine ou explicite) : toujours servi avec le drapeau injecté
-  if (url.pathname === '/' || url.pathname === '/index.html') {
-    const spaIndex = await serveSpaIndex();
-    if (spaIndex) return spaIndex;
-    await next();
-    return;
-  }
-
-  const filePath = join(frontendDir, url.pathname);
-  const exists = await Bun.file(filePath).exists();
-  if (exists) {
-    const file = Bun.file(filePath);
-    const contentType = getContentType(url.pathname);
-    return new Response(file, { headers: { 'Content-Type': contentType } });
-  }
-
-  // Fallback SPA (routes profondes) : index.html injecté
-  const spaIndex = await serveSpaIndex();
-  if (spaIndex) return spaIndex;
-  await next();
-});
-
-function getContentType(path: string): string {
-  if (path.endsWith('.html')) return 'text/html';
-  if (path.endsWith('.js')) return 'application/javascript';
-  if (path.endsWith('.css')) return 'text/css';
-  if (path.endsWith('.json')) return 'application/json';
-  if (path.endsWith('.png')) return 'image/png';
-  if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
-  if (path.endsWith('.svg')) return 'image/svg+xml';
-  if (path.endsWith('.ico')) return 'image/x-icon';
-  if (path.endsWith('.woff2')) return 'font/woff2';
-  if (path.endsWith('.woff')) return 'font/woff';
-  return 'application/octet-stream';
-}
 
 export default {
   port: process.env.PORT || 8080,
