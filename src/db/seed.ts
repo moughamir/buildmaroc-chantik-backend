@@ -256,11 +256,11 @@ async function seed() {
   } as any);
   console.log('  ✅ Seeded RBAC custom roles and permissions');
 
-  // --- DEV credential user (dev-only; never in production) ---
+  // --- DEV credential user (AUTH_DEV_BYPASS=1 only; never in production) ---
   // Lets a human log in with email/password via better-auth during local
   // development. The org membership row is inserted so /api/v1/projects and
   // org-scoped routes resolve a default org for this user.
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.AUTH_DEV_BYPASS === '1' && process.env.NODE_ENV !== 'production') {
     try {
       const devEmail = 'admin@chantik.dev';
       const devPassword = process.env.DEV_SEED_PASSWORD || 'chantik-dev-2026!';

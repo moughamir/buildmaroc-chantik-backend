@@ -37,14 +37,18 @@ function normalizeDevUserId(raw: string): string {
 
 /**
  * Replaces src/middleware/auth.ts (Supabase JWT). Auth is now handled by
- * better-auth: cookie sessions are resolved via auth.api.getSession, with a
- * dev-only x-user-id bypass that is NEVER read in production.
+ * better-auth: cookie sessions are resolved via auth.api.getSession, with an
+ * opt-in dev-only x-user-id bypass (AUTH_DEV_BYPASS=1) that is NEVER read in
+ * production.
  *
  * Consumer convention: orgId null + list route → empty array; orgId null +
  * detail/mutation route → 401.
  */
 export async function sessionMiddleware(c: SessionCtx, next: () => Promise<void>) {
   const isProd = process.env.NODE_ENV === 'production';
+  // Explicit opt-in flag: the x-user-id impersonation bypass is OFF unless
+  // AUTH_DEV_BYPASS=1 is set AND the environment is non-production.
+  const devBypassEnabled = process.env.AUTH_DEV_BYPASS === '1' && !isProd;
 
   const setAll = (
     userId: string | null,
@@ -83,9 +87,10 @@ export async function sessionMiddleware(c: SessionCtx, next: () => Promise<void>
     return;
   }
 
-  // Dev-only bypass: hard-gated to non-production, header present AND no
-  // Authorization header. Never evaluated in production.
-  if (!isProd) {
+  // Dev-only bypass: requires AUTH_DEV_BYPASS=1 (explicit opt-in), a
+  // non-production environment, the header present AND no Authorization
+  // header. Never evaluated in production.
+  if (devBypassEnabled) {
     const rawDevUserId = c.req.header('x-user-id');
     if (rawDevUserId && !c.req.header('Authorization')) {
       // Tolerant org resolution: a dev id may not be a real user row (e.g.

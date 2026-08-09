@@ -89,7 +89,7 @@ app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
   scheme: 'bearer',
   description:
     'Session token. Get one via POST /api/v1/auth/sign-in (or any better-auth sign-in), then paste it here. ' +
-    'In local dev you can also bypass auth entirely with the `x-user-id` header (see session middleware).',
+    'In local dev (AUTH_DEV_BYPASS=1 only) you can also impersonate a user with the `x-user-id` header (see session middleware).',
 });
 app = app.doc('/api/v1/doc', {
   openapi: '3.0.0',
