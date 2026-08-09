@@ -31,9 +31,6 @@ app.use('*', async (c, next) => {
   }
 });
 
-app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
-app.get('/api/v1/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
-
 // Agnostic API: allowed origins are configured by the UI hosts (never assumed).
 // Comma-separated list, e.g. CORS_ORIGINS=https://app.example.com,https://admin.example.com
 const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
@@ -41,11 +38,16 @@ const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
   .map((o) => o.trim())
   .filter(Boolean);
 
+// NOTE: Hono `use` middleware applies only to routes registered AFTER it —
+// the health routes below are intentionally registered after this cors mount.
 app.use('*', cors({
   origin: corsOrigins,
   credentials: true,
   allowHeaders: ['Content-Type', 'Authorization', 'x-user-id'],
 }));
+
+app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/api/v1/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // better-auth handlers (email/password + organization plugin) — BEFORE session middleware.
 app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
