@@ -234,7 +234,7 @@ export const updateOrganizationSchema = z.object({
   name: z.string().min(1).optional(),
   slug: z.string().min(1).max(100).optional(),
   billingEmail: z.string().email().optional(),
-});
+}).refine((o) => Object.keys(o).length > 0, { message: 'At least one field is required' });
 
 export const invitationAcceptSchema = z.object({
   token: z.string().uuid(),
@@ -258,14 +258,14 @@ export const teamMemberAssignSchema = z.object({
 export const userProfileUpdateSchema = z.object({
   name: z.string().optional(),
   image: z.string().url().optional(),
-});
+}).refine((o) => Object.keys(o).length > 0, { message: 'At least one field is required' });
 
 export const userPreferencesUpdateSchema = z.object({
   theme: z.enum(['light', 'dark', 'system']).optional(),
   locale: z.string().max(10).optional(),
   timezone: z.string().max(50).optional(),
   offlineModeDefault: z.boolean().optional(),
-});
+}).refine((o) => Object.keys(o).length > 0, { message: 'At least one field is required' });
 
 // ============================================================================
 // 9. RBAC (additional schemas)
@@ -282,7 +282,7 @@ export const customRoleUpdateSchema = z.object({
     resource: z.enum(['project', 'billing', 'team', 'member', 'webhook', 'api_key']),
     action: z.enum(['create', 'read', 'update', 'delete', 'manage']),
   })).optional(),
-});
+}).refine((o) => Object.keys(o).length > 0, { message: 'At least one field is required' });
 
 export const userRoleAssignSchema = z.object({
   userId: z.string().uuid(),
@@ -348,7 +348,7 @@ export const updateHotspotRestSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   status: z.enum(['compliant', 'issue', 'pending', 'resolved']).optional(),
-});
+}).refine((o) => Object.keys(o).length > 0, { message: 'At least one field is required' });
 
 // ============================================================================
 // 12. CONSTRUCTION ENGINEERING (additional schemas)
@@ -358,7 +358,7 @@ export const rfiUpdateSchema = z.object({
   answer: z.string().optional(),
   status: z.enum(['draft', 'submitted', 'answered', 'closed']).optional(),
   assignedToId: z.string().uuid().optional(),
-});
+}).refine((o) => Object.keys(o).length > 0, { message: 'At least one field is required' });
 
 export const changeOrderUpdateSchema = z.object({
   status: z.enum(['pending', 'approved', 'rejected', 'invoiced']),
@@ -369,7 +369,7 @@ export const equipmentUpdateSchema = z.object({
   status: z.enum(['available', 'in_use', 'maintenance', 'decommissioned']).optional(),
   currentProjectId: z.string().uuid().optional(),
   lastServiceDate: z.string().datetime().optional(),
-});
+}).refine((o) => Object.keys(o).length > 0, { message: 'At least one field is required' });
 
 // Derived from the `notes` table. The router supplies projectId/createdById from
 // the URL/auth context, so only `content` is part of the API body.
@@ -379,7 +379,8 @@ export const noteCreateSchema = createInsertSchema(notes, {
 
 export const noteUpdateSchema = createUpdateSchema(notes, {
   content: (schema) => schema.min(1),
-}).omit({ id: true, projectId: true, createdById: true, createdAt: true, updatedAt: true });
+}).omit({ id: true, projectId: true, createdById: true, createdAt: true, updatedAt: true })
+  .refine((o) => Object.keys(o).length > 0, { message: 'At least one field is required' });
 
 // Derived from the `pointageRecords` table. The router supplies projectId from
 // the URL, and `date` is not part of the create body today — both are omitted.
@@ -397,7 +398,8 @@ export const pointageRecordCreateSchema = createInsertSchema(pointageRecords, {
 
 export const pointageRecordUpdateSchema = createUpdateSchema(pointageRecords, {
   count: (schema) => schema.min(0),
-}).omit({ id: true, projectId: true, date: true, tradeId: true, isCompanyTrade: true, subcontractorId: true, createdAt: true, updatedAt: true });
+}).omit({ id: true, projectId: true, date: true, tradeId: true, isCompanyTrade: true, subcontractorId: true, createdAt: true, updatedAt: true })
+  .refine((o) => Object.keys(o).length > 0, { message: 'At least one field is required' });
 
 // Query-string filter for GET /projects/:projectId/pointage — not an insert
 // shape, so it stays a plain hand-written schema (date arrives as an ISO string).
