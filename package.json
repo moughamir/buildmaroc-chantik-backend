@@ -17,6 +17,7 @@
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
     "hono": "^4.13.0",
+    "nodemailer": "^9.0.5",
     "postgres": "^3.4.9",
     "zod": "^4.4.3"
   },
