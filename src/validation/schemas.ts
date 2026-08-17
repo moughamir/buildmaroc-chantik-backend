@@ -467,6 +467,18 @@ export const projectWithCapturesSchema = projectSelectSchema.extend({
   captures: z.array(z.any()),
 });
 
+// GET /projects list item — flat row + lightweight capture count and the 3
+// most recent notes (content, author name, date). No nested capture objects.
+export const projectListItemSchema = projectSelectSchema.extend({
+  capturesCount: z.number().int(),
+  notes: z.array(z.object({
+    id: z.string().uuid(),
+    text: z.string(),
+    author: z.string().nullable(),
+    date: z.string(),
+  })),
+});
+
 // Shared error/ack shapes returned by the converted routes.
 export const errorResponseSchema = z.object({ error: z.string() });
 export const deletedResponseSchema = z.object({ deleted: z.boolean() });

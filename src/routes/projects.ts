@@ -1,7 +1,8 @@
 import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
 import { z } from 'zod';
 import { db } from '../db';
-import { eq, desc, inArray } from 'drizzle-orm';
+import { eq, desc, inArray, countDistinct } from 'drizzle-orm';
+import { createClient } from '@supabase/supabase-js';
 import {
   projects,
   zones,
@@ -15,6 +16,8 @@ import {
   attendanceLogs,
   siteDailyLogs,
   organizationMembers,
+  notes,
+  users,
 } from '../db/schema';
 import {
   projectSchema,
@@ -32,6 +35,7 @@ import {
   attendanceLogSelectSchema,
   projectHealthSelectSchema,
   projectWithCapturesSchema,
+  projectListItemSchema,
 } from '../validation/schemas';
 import type { ProjectInput, ZoneCreateInput, RfiInput, ChangeOrderInput, BlueprintSheetInput, SiteDailyLogInput } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
@@ -39,6 +43,15 @@ import type { SessionVariables } from '../middleware/session';
 import { requireProjectInOrg } from '../middleware/tenant';
 
 const projectIdParam = { projectId: z.string().uuid() };
+
+// Supabase storage (used only to mint signed image URLs for capture panoramas).
+// Left null in local dev (empty SUPABASE_URL/KEY) so `createClient` is never
+// called with placeholder values — see spatial.ts for the same guard.
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = supabaseUrl && supabaseServiceRoleKey
+  ? createClient(supabaseUrl, supabaseServiceRoleKey)
+  : null;
 
 // L6c: shared 400 validation shape { error: { message, issues } } for invalid
 // bodies / params / query (defaultHook) and malformed JSON (onError).
@@ -50,8 +63,8 @@ const listProjectsRoute = createRoute({
   tags: ['projects'],
   responses: {
     200: {
-      description: 'List the authenticated user\'s default-org projects',
-      content: { 'application/json': { schema: z.array(projectSelectSchema) } },
+      description: 'List the authenticated user\'s default-org projects (with lightweight capture count + latest notes)',
+      content: { 'application/json': { schema: z.array(projectListItemSchema) } },
     },
     401: {
       description: 'Authentication required',
@@ -90,7 +103,53 @@ projectsApp.openapi(listProjectsRoute, async (c) => {
   }
 
   const result = await db.select().from(projects).where(eq(projects.organizationId, orgId));
-  return c.json(result);
+  if (result.length === 0) return c.json([]);
+
+  const projectIds = result.map((p) => p.id);
+
+  // Lightweight enrichment (no nested capture objects). A "capture" is one
+  // distinct panorama `capturedAt` group per project — same grouping as
+  // `assembleCaptures`, so `capturesCount` matches the detail endpoint.
+  const captureCounts = await db
+    .select({
+      projectId: zones.projectId,
+      capturesCount: countDistinct(panoramas.capturedAt),
+    })
+    .from(zones)
+    .innerJoin(capturePoints, eq(capturePoints.zoneId, zones.id))
+    .innerJoin(panoramas, eq(panoramas.capturePointId, capturePoints.id))
+    .where(inArray(zones.projectId, projectIds))
+    .groupBy(zones.projectId);
+
+  // The 3 most recent notes per project (batched, joined with author name).
+  const noteRows = await db
+    .select({
+      projectId: notes.projectId,
+      id: notes.id,
+      text: notes.content,
+      author: users.name,
+      date: notes.createdAt,
+    })
+    .from(notes)
+    .innerJoin(users, eq(users.id, notes.createdById))
+    .where(inArray(notes.projectId, projectIds))
+    .orderBy(desc(notes.createdAt));
+
+  const capturesCountByProject = new Map(captureCounts.map((r) => [r.projectId, r.capturesCount]));
+  const notesByProject = new Map<string, { id: string; text: string; author: string | null; date: string }[]>();
+  for (const note of noteRows) {
+    const list = notesByProject.get(note.projectId) ?? [];
+    if (list.length < 3) {
+      list.push({ id: note.id, text: note.text, author: note.author, date: note.date.toISOString() });
+    }
+    notesByProject.set(note.projectId, list);
+  }
+
+  return c.json(result.map((project) => ({
+    ...project,
+    capturesCount: capturesCountByProject.get(project.id) ?? 0,
+    notes: notesByProject.get(project.id) ?? [],
+  })));
 });
 
 const projectGetRoute = createRoute({
@@ -181,11 +240,29 @@ async function assembleCaptures(zoneRows: (typeof zones.$inferSelect)[]): Promis
       capturedAt: first.capturedAt.toISOString(),
       date: first.capturedAt.toISOString(),
       ...meta,
+      // Signed storage URL for the capture's first panorama — the 360° viewer
+      // consumes `imageUrl` directly (Pannellum panorama source). Falls back to
+      // null when Supabase storage is not configured (local dev).
+      imageUrl: await signedImageUrl(first.storagePath),
       zones: sorted.map(zoneOf),
       hotspots: sorted.flatMap((p) => hotspotsByPanoramaId.get(p.id) ?? []),
     });
   }
   return captures;
+}
+
+/**
+ * Mint a short-lived signed URL for a panorama's `storage_path`. Returns null
+ * when Supabase storage is not configured or signing fails, so responses stay
+ * valid in local dev (no storage) and never leak raw storage paths.
+ */
+async function signedImageUrl(storagePath: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.storage
+    .from('chantik-assets')
+    .createSignedUrl(storagePath, 3600);
+  if (error || !data) return null;
+  return data.signedUrl;
 }
 
 const projectPatchRoute = createRoute({
