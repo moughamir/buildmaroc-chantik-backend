@@ -13,11 +13,13 @@ import {
 } from '../validation/schemas';
 import type { PointageRecordCreateInput, PointageRecordUpdateInput, PointageQueryInput } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
+import type { SessionVariables } from '../middleware/session';
+import { requireProjectInOrg, requirePointageRecordInOrg } from '../middleware/tenant';
 
 // Mounted at /api/v1.
 // L6c: shared 400 validation shape { error: { message, issues } } for invalid
 // bodies / params / query (defaultHook) and malformed JSON (onError).
-export const pointageApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
+export const pointageApp = new OpenAPIHono<{ Variables: SessionVariables }>({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
 const pointageListRoute = createRoute({
   method: 'get',
@@ -37,6 +39,8 @@ const pointageListRoute = createRoute({
 
 pointageApp.openapi(pointageListRoute, async (c) => {
   const projectId = c.req.param('projectId');
+  const denied = await requireProjectInOrg(c, projectId);
+  if (denied) return denied;
   const query = c.req.valid('query') as PointageQueryInput;
   const dateFilter = query.date ? new Date(query.date) : new Date();
 
@@ -70,6 +74,8 @@ const pointageCreateRoute = createRoute({
 
 pointageApp.openapi(pointageCreateRoute, async (c) => {
   const projectId = c.req.param('projectId') as string;
+  const denied = await requireProjectInOrg(c, projectId);
+  if (denied) return denied;
   const input = c.req.valid('json') as PointageRecordCreateInput;
   const [record] = await db.insert(pointageRecords).values({
     projectId,
@@ -106,6 +112,8 @@ const pointagePatchRoute = createRoute({
 
 pointageApp.openapi(pointagePatchRoute, async (c) => {
   const id = c.req.param('id');
+  const denied = await requirePointageRecordInOrg(c, id);
+  if (denied) return denied;
   const input = c.req.valid('json') as PointageRecordUpdateInput;
   const updates: Record<string, unknown> = {};
   if (input.count !== undefined) updates.count = input.count;
@@ -139,6 +147,8 @@ const pointageDeleteRoute = createRoute({
 
 pointageApp.openapi(pointageDeleteRoute, async (c) => {
   const id = c.req.param('id');
+  const denied = await requirePointageRecordInOrg(c, id);
+  if (denied) return denied;
   const [deleted] = await db.delete(pointageRecords).where(eq(pointageRecords.id, id)).returning();
   if (!deleted) return c.json({ error: 'Pointage record not found' }, 404);
   return c.json({ deleted: true });

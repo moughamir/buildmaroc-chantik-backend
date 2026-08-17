@@ -1,6 +1,4 @@
-import { pgRole, pgEnum } from 'drizzle-orm/pg-core';
-
-export const authenticatedRole = pgRole('authenticated').existing();
+import { pgEnum } from 'drizzle-orm/pg-core';
 
 export const orgRoleEnum = pgEnum('org_role', ['owner', 'admin', 'member']);
 export const inviteStatusEnum = pgEnum('invite_status', ['pending', 'accepted', 'expired']);
