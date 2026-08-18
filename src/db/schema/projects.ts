@@ -10,6 +10,8 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   code: varchar('code', { length: 50 }),
   region: varchar('region', { length: 100 }).notNull(),
+  address: text('address'),
+  projectType: varchar('project_type', { length: 50 }),
   coordinates: geometryPoint('coordinates'),
   status: projectStatusEnum('status').default('planning').notNull(),
   managerUserId: uuid('manager_user_id').references(() => users.id),

@@ -144,6 +144,52 @@ pointageApp.openapi(pointageDeleteRoute, async (c) => {
   return c.json({ deleted: true });
 });
 
+const pointageValidateRoute = createRoute({
+  method: 'patch',
+  path: '/projects/{projectId}/pointage/validate',
+  tags: ['pointage'],
+  request: {
+    params: z.object({ projectId: z.string().uuid() }),
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            date: z.string().datetime(),
+            validated: z.boolean(),
+          }),
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: 'Pointage records validated (or unvalidated) for a project and date',
+      content: { 'application/json': { schema: z.object({ updated: z.number().int() }) } },
+    },
+  },
+});
+
+pointageApp.openapi(pointageValidateRoute, async (c) => {
+  const projectId = c.req.param('projectId');
+  const input = c.req.valid('json') as { date: string; validated: boolean };
+  const dateFilter = new Date(input.date);
+
+  const updated = await db
+    .update(pointageRecords)
+    .set({
+      isValidated: input.validated,
+      validatedAt: input.validated ? new Date() : null,
+    })
+    .where(and(
+      eq(pointageRecords.projectId, projectId),
+      sql`${pointageRecords.date}::date = ${dateFilter.toISOString().split('T')[0]}`
+    ))
+    .returning({ id: pointageRecords.id });
+
+  return c.json({ updated: updated.length });
+});
+
 const tradeCatalogRoute = createRoute({
   method: 'get',
   path: '/trade-catalog',
@@ -159,4 +205,95 @@ const tradeCatalogRoute = createRoute({
 pointageApp.openapi(tradeCatalogRoute, async (c) => {
   const result = await db.select().from(tradeCatalog);
   return c.json(result);
+});
+
+// ---------------------------------------------------------------------------
+// Subcontractors
+// ---------------------------------------------------------------------------
+
+const subcontractorBodySchema = z.object({
+  company: z.string().min(1),
+  specialty: z.string().min(1),
+});
+
+const subcontractorSelectSchema = z.object({
+  id: z.string().uuid(),
+  projectId: z.string().uuid(),
+  company: z.string(),
+  specialty: z.string(),
+  createdAt: z.string().datetime(),
+});
+
+const subcontractorsListRoute = createRoute({
+  method: 'get',
+  path: '/projects/{projectId}/subcontractors',
+  tags: ['pointage'],
+  request: {
+    params: z.object({ projectId: z.string().uuid() }),
+  },
+  responses: {
+    200: {
+      description: 'List subcontractors for a project',
+      content: { 'application/json': { schema: z.array(subcontractorSelectSchema) } },
+    },
+  },
+});
+
+pointageApp.openapi(subcontractorsListRoute, async (c) => {
+  const projectId = c.req.param('projectId');
+  const result = await db.select().from(subcontractors).where(eq(subcontractors.projectId, projectId));
+  return c.json(result);
+});
+
+const subcontractorCreateRoute = createRoute({
+  method: 'post',
+  path: '/projects/{projectId}/subcontractors',
+  tags: ['pointage'],
+  request: {
+    params: z.object({ projectId: z.string().uuid() }),
+    body: { content: { 'application/json': { schema: subcontractorBodySchema } }, required: true },
+  },
+  responses: {
+    201: {
+      description: 'Subcontractor created',
+      content: { 'application/json': { schema: subcontractorSelectSchema } },
+    },
+  },
+});
+
+pointageApp.openapi(subcontractorCreateRoute, async (c) => {
+  const projectId = c.req.param('projectId') as string;
+  const input = c.req.valid('json') as z.infer<typeof subcontractorBodySchema>;
+  const [record] = await db.insert(subcontractors).values({
+    projectId,
+    company: input.company,
+    specialty: input.specialty,
+  }).returning();
+
+  return c.json(record, 201);
+});
+
+const subcontractorDeleteRoute = createRoute({
+  method: 'delete',
+  path: '/subcontractors/{id}',
+  tags: ['pointage'],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+  },
+  responses: {
+    200: {
+      description: 'Subcontractor deleted',
+      content: { 'application/json': { schema: deletedResponseSchema } },
+    },
+    404: {
+      description: 'Subcontractor not found',
+    },
+  },
+});
+
+pointageApp.openapi(subcontractorDeleteRoute, async (c) => {
+  const id = c.req.param('id');
+  const [deleted] = await db.delete(subcontractors).where(eq(subcontractors.id, id)).returning();
+  if (!deleted) return c.json({ error: 'Subcontractor not found' }, 404);
+  return c.json({ deleted: true });
 });

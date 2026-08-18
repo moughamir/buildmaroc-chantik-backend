@@ -177,6 +177,9 @@ async function assembleCaptures(zoneRows: (typeof zones.$inferSelect)[]): Promis
       capturedAt: first.capturedAt.toISOString(),
       date: first.capturedAt.toISOString(),
       ...meta,
+      // [0.4] Client 360° viewer: the panorama asset endpoint 302-redirects to
+      // the signed Supabase URL, which the browser follows transparently.
+      imageUrl: `/api/v1/spatial/panoramas/${first.id}/asset`,
       zones: sorted.map(zoneOf),
       hotspots: sorted.flatMap((p) => hotspotsByPanoramaId.get(p.id) ?? []),
     });
