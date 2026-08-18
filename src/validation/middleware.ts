@@ -43,6 +43,8 @@ import {
   pointageRecordCreateSchema,
   pointageRecordUpdateSchema,
   pointageQuerySchema,
+  pointageValidateSchema,
+  subcontractorCreateSchema,
 } from './schemas';
 
 export const validateSyncBatch = zValidator('json', syncBatchSchema);
@@ -87,6 +89,8 @@ export const validateNoteUpdate = zValidator('json', noteUpdateSchema);
 export const validatePointageRecordCreate = zValidator('json', pointageRecordCreateSchema);
 export const validatePointageRecordUpdate = zValidator('json', pointageRecordUpdateSchema);
 export const validatePointageQuery = zValidator('query', pointageQuerySchema);
+export const validatePointageValidate = zValidator('json', pointageValidateSchema);
+export const validateSubcontractorCreate = zValidator('json', subcontractorCreateSchema);
 
 export function validateParam(schema: Record<string, unknown>): MiddlewareHandler {
   return zValidator('param', schema as any);

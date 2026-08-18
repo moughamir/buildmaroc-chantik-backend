@@ -11,6 +11,7 @@ import {
   rfis,
   changeOrders,
   pointageRecords,
+  subcontractors,
   workCrews,
   equipment,
 } from '../db/schema';
@@ -215,6 +216,18 @@ export async function requirePointageRecordInOrg(c: TenantCtx, recordId: string)
     .where(eq(pointageRecords.id, recordId))
     .limit(1);
   return guardOrgOwned(c, row, { error: 'Pointage record not found' });
+}
+
+/** subcontractors.projectId → projects.organizationId. */
+export async function requireSubcontractorInOrg(c: TenantCtx, subId: string): Promise<Response | null> {
+  if (isDevBypass(c)) return null;
+  const [row] = await db
+    .select({ organizationId: projects.organizationId })
+    .from(subcontractors)
+    .innerJoin(projects, eq(projects.id, subcontractors.projectId))
+    .where(eq(subcontractors.id, subId))
+    .limit(1);
+  return guardOrgOwned(c, row, { error: 'Subcontractor not found' });
 }
 
 /** workCrews carries organizationId directly. */
