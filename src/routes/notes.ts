@@ -1,7 +1,7 @@
 import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
 import { z } from 'zod';
 import { db } from '../db';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { notes } from '../db/schema';
 import {
   noteCreateSchema,
@@ -11,15 +11,13 @@ import {
 } from '../validation/schemas';
 import type { NoteCreateInput, NoteUpdateInput } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
-import type { SessionVariables } from '../middleware/session';
-import { requireProjectInOrg } from '../middleware/tenant';
 
 // Mounted at /api/v1/projects/:projectId/notes — `projectId` comes from the
 // mount prefix (Hono merges it into params at runtime), so the route-local
 // paths below only declare `{noteId}`.
 // L6c: shared 400 validation shape { error: { message, issues } } for invalid
 // bodies / params / query (defaultHook) and malformed JSON (onError).
-export const notesApp = new OpenAPIHono<{ Variables: SessionVariables }>({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
+export const notesApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
 const notesListRoute = createRoute({
   method: 'get',
@@ -35,8 +33,6 @@ const notesListRoute = createRoute({
 
 notesApp.openapi(notesListRoute, async (c) => {
   const projectId = c.req.param('projectId') as string;
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const result = await db.select().from(notes).where(eq(notes.projectId, projectId));
   return c.json(result);
 });
@@ -58,8 +54,6 @@ const noteCreateRoute = createRoute({
 
 notesApp.openapi(noteCreateRoute, async (c) => {
   const projectId = c.req.param('projectId') as string;
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const userId = ((c as any).get('userId') as string) || '';
   const input = c.req.valid('json') as NoteCreateInput;
   const [note] = await db.insert(notes).values({
@@ -91,9 +85,7 @@ const notePatchRoute = createRoute({
 });
 
 notesApp.openapi(notePatchRoute, async (c) => {
-  const projectId = c.req.param('projectId') as string;
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
+  const projectId = c.req.param('projectId');
   const noteId = c.req.param('noteId');
   const input = c.req.valid('json') as NoteUpdateInput;
   const updates: Record<string, unknown> = {};
@@ -101,7 +93,7 @@ notesApp.openapi(notePatchRoute, async (c) => {
 
   const [note] = await db.update(notes)
     .set(updates)
-    .where(and(eq(notes.id, noteId), eq(notes.projectId, projectId)))
+    .where(eq(notes.id, noteId))
     .returning();
 
   if (!note) return c.json({ error: 'Note not found' }, 404);
@@ -127,11 +119,9 @@ const noteDeleteRoute = createRoute({
 });
 
 notesApp.openapi(noteDeleteRoute, async (c) => {
-  const projectId = c.req.param('projectId') as string;
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
+  const projectId = c.req.param('projectId');
   const noteId = c.req.param('noteId');
-  const [deleted] = await db.delete(notes).where(and(eq(notes.id, noteId), eq(notes.projectId, projectId))).returning();
+  const [deleted] = await db.delete(notes).where(eq(notes.id, noteId)).returning();
   if (!deleted) return c.json({ error: 'Note not found' }, 404);
   return c.json({ deleted: true });
 });

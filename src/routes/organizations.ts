@@ -79,7 +79,6 @@ import type {
 } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
 import type { SessionVariables } from '../middleware/session';
-import { requireOrgMembership, requireOrgRole } from '../middleware/tenant';
 
 // Mounted at /api/v1/organizations.
 // L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
@@ -168,8 +167,6 @@ const organizationGetRoute = createRoute({
 
 organizationsApp.openapi(organizationGetRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
   if (!org) return c.json({ error: 'Organization not found' }, 404);
   return c.json(org);
@@ -196,8 +193,6 @@ const organizationPatchRoute = createRoute({
 
 organizationsApp.openapi(organizationPatchRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const input = c.req.valid('json') as UpdateOrganizationInput;
   const [org] = await db.update(organizations)
     .set(input)
@@ -226,8 +221,6 @@ const organizationDeleteRoute = createRoute({
 
 organizationsApp.openapi(organizationDeleteRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const [org] = await db.delete(organizations).where(eq(organizations.id, orgId)).returning();
   if (!org) return c.json({ error: 'Organization not found' }, 404);
   return c.json({ deleted: true });
@@ -248,8 +241,6 @@ const organizationMembersListRoute = createRoute({
 
 organizationsApp.openapi(organizationMembersListRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const result = await db
     .select({
       userId: organizationMembers.userId,
@@ -283,8 +274,6 @@ const organizationInvitationCreateRoute = createRoute({
 
 organizationsApp.openapi(organizationInvitationCreateRoute, async (c) => {
   const orgId = c.req.param('orgId') as string;
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const input = c.req.valid('json') as OrganizationInvitationInput;
   const token = crypto.randomUUID();
   const [invitation] = await db.insert(organizationInvitations).values({
@@ -315,8 +304,6 @@ const customRolesListRoute = createRoute({
 
 organizationsApp.openapi(customRolesListRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const roles = await db.select().from(customRoles).where(eq(customRoles.organizationId, orgId));
   return c.json(roles);
 });
@@ -339,8 +326,6 @@ const customRoleCreateRoute = createRoute({
 
 organizationsApp.openapi(customRoleCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const input = c.req.valid('json') as CustomRoleCreateInput;
   const [role] = await db.insert(customRoles).values({
     organizationId: orgId,
@@ -371,8 +356,6 @@ const customRolePatchRoute = createRoute({
 
 organizationsApp.openapi(customRolePatchRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const roleId = c.req.param('roleId');
   const input = c.req.valid('json') as CustomRoleUpdateInput;
 
@@ -416,8 +399,6 @@ const userRoleAssignRoute = createRoute({
 
 organizationsApp.openapi(userRoleAssignRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const userId = c.req.param('userId');
   const input = c.req.valid('json') as UserRoleAssignInput;
   const [assignment] = await db.insert(userRoles).values({
@@ -447,8 +428,6 @@ const subscriptionGetRoute = createRoute({
 
 organizationsApp.openapi(subscriptionGetRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const [sub] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, orgId)).limit(1);
   if (!sub) return c.json({ error: 'Subscription not found' }, 404);
   return c.json(sub);
@@ -475,8 +454,6 @@ const checkoutCreateRoute = createRoute({
 
 organizationsApp.openapi(checkoutCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const input = c.req.valid('json') as CheckoutSessionInput;
 
   const [subscription] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, orgId)).limit(1);
@@ -503,8 +480,6 @@ const invoicesListRoute = createRoute({
 
 organizationsApp.openapi(invoicesListRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const result = await db.select().from(invoices).where(eq(invoices.organizationId, orgId));
   return c.json(result);
 });
@@ -524,8 +499,6 @@ const apiKeysListRoute = createRoute({
 
 organizationsApp.openapi(apiKeysListRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const result = await db.select({ id: apiKeys.id, name: apiKeys.name, prefix: apiKeys.prefix, createdAt: apiKeys.createdAt }).from(apiKeys).where(eq(apiKeys.organizationId, orgId));
   return c.json(result);
 });
@@ -548,8 +521,6 @@ const apiKeyCreateRoute = createRoute({
 
 organizationsApp.openapi(apiKeyCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const input = c.req.valid('json') as ApiKeyCreateInput;
   const rawKey = `ck_${crypto.randomUUID().replace(/-/g, '')}`;
   const prefix = rawKey.slice(0, 10);
@@ -585,8 +556,6 @@ const apiKeyDeleteRoute = createRoute({
 
 organizationsApp.openapi(apiKeyDeleteRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const keyId = c.req.param('keyId');
   const [deleted] = await db.delete(apiKeys).where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, orgId))).returning();
   if (!deleted) return c.json({ error: 'API key not found' }, 404);
@@ -608,8 +577,6 @@ const webhooksListRoute = createRoute({
 
 organizationsApp.openapi(webhooksListRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const result = await db.select().from(webhooks).where(eq(webhooks.organizationId, orgId));
   return c.json(result);
 });
@@ -632,8 +599,6 @@ const webhookCreateRoute = createRoute({
 
 organizationsApp.openapi(webhookCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const input = c.req.valid('json') as WebhookRegisterInput;
   const [webhook] = await db.insert(webhooks).values({
     organizationId: orgId,
@@ -665,8 +630,6 @@ const webhookDeleteRoute = createRoute({
 
 organizationsApp.openapi(webhookDeleteRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const webhookId = c.req.param('webhookId');
   const [deleted] = await db.delete(webhooks).where(and(eq(webhooks.id, webhookId), eq(webhooks.organizationId, orgId))).returning();
   if (!deleted) return c.json({ error: 'Webhook not found' }, 404);
@@ -688,8 +651,6 @@ const orgProjectsListRoute = createRoute({
 
 organizationsApp.openapi(orgProjectsListRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const result = await db.select().from(projects).where(eq(projects.organizationId, orgId));
   return c.json(result);
 });
@@ -712,8 +673,6 @@ const orgProjectCreateRoute = createRoute({
 
 organizationsApp.openapi(orgProjectCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const input = c.req.valid('json') as ProjectInput;
   const [project] = await db.insert(projects).values({
     organizationId: orgId,
@@ -742,8 +701,6 @@ const orgCrewsListRoute = createRoute({
 
 organizationsApp.openapi(orgCrewsListRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const result = await db
     .select({
       id: workCrews.id,
@@ -779,8 +736,6 @@ const orgCrewCreateRoute = createRoute({
 
 organizationsApp.openapi(orgCrewCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const input = c.req.valid('json') as WorkCrewInput;
   const [crew] = await db.insert(workCrews).values({
     organizationId: orgId,
@@ -808,8 +763,6 @@ const orgEquipmentListRoute = createRoute({
 
 organizationsApp.openapi(orgEquipmentListRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const result = await db.select().from(equipment).where(eq(equipment.organizationId, orgId));
   return c.json(result);
 });
@@ -832,8 +785,6 @@ const orgEquipmentCreateRoute = createRoute({
 
 organizationsApp.openapi(orgEquipmentCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const input = c.req.valid('json') as EquipmentInput;
   const [eq] = await db.insert(equipment).values({
     organizationId: orgId,
@@ -866,8 +817,6 @@ const teamCreateRoute = createRoute({
 
 organizationsApp.openapi(teamCreateRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const input = c.req.valid('json') as TeamCreateInput;
   const [team] = await db.insert(teams).values({
     organizationId: orgId,
@@ -895,8 +844,6 @@ const teamMemberAssignRoute = createRoute({
 
 organizationsApp.openapi(teamMemberAssignRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const teamId = c.req.param('teamId');
   const input = c.req.valid('json') as TeamMemberAssignInput;
   const [member] = await db.insert(teamMembers).values({
@@ -927,8 +874,6 @@ const organizationMemberDeleteRoute = createRoute({
 
 organizationsApp.openapi(organizationMemberDeleteRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgRole(c, orgId, 'admin');
-  if (denied) return denied as never;
   const userId = c.req.param('userId');
   const [removed] = await db
     .delete(organizationMembers)
@@ -957,8 +902,6 @@ const orgAuditLogsListRoute = createRoute({
 
 organizationsApp.openapi(orgAuditLogsListRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const result = await db.select().from(auditLogs).where(eq(auditLogs.organizationId, orgId)).limit(100);
   return c.json(result);
 });
@@ -980,8 +923,6 @@ const orgExportRoute = createRoute({
 
 organizationsApp.openapi(orgExportRoute, async (c) => {
   const orgId = c.req.param('orgId');
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
   const format = c.req.query('format') || 'json';
 
   const orgProjects = await db.select().from(projects).where(eq(projects.organizationId, orgId));

@@ -42,8 +42,6 @@ export {
   pointageRecordCreateSchema,
   pointageRecordUpdateSchema,
   pointageQuerySchema,
-  pointageValidateSchema,
-  subcontractorCreateSchema,
   // L6e response schemas
   projectSelectSchema,
   noteSelectSchema,
@@ -56,7 +54,6 @@ export {
   attendanceLogSelectSchema,
   projectHealthSelectSchema,
   tradeCatalogSelectSchema,
-  subcontractorSelectSchema,
   projectWithCapturesSchema,
   errorResponseSchema,
   deletedResponseSchema,
@@ -142,8 +139,6 @@ export {
   validatePointageRecordCreate,
   validatePointageRecordUpdate,
   validatePointageQuery,
-  validatePointageValidate,
-  validateSubcontractorCreate,
   validateParam,
   validateQuery,
 } from './middleware';
@@ -198,6 +193,4 @@ export type {
   PointageRecordCreateInput,
   PointageRecordUpdateInput,
   PointageQueryInput,
-  PointageValidateInput,
-  SubcontractorCreateInput,
 } from './schemas';

@@ -10,12 +10,10 @@ import {
 } from '../validation/schemas';
 import type { AttendanceClockInInput, AttendanceClockOutInput } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
-import type { SessionVariables } from '../middleware/session';
-import { isDevBypass, requireOrgMembership, requireProjectInOrg } from '../middleware/tenant';
 
 // Mounted at /api/v1.
 // L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
-export const attendanceApp = new OpenAPIHono<{ Variables: SessionVariables }>({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
+export const attendanceApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
 const clockInRoute = createRoute({
   method: 'post',
@@ -34,19 +32,8 @@ const clockInRoute = createRoute({
 
 attendanceApp.openapi(clockInRoute, async (c) => {
   const input = c.req.valid('json') as AttendanceClockInInput;
-
-  // S6: the org is no longer taken from the request body — it comes from the
-  // session context (c.get('orgId')). The body field (still present in the
-  // shared schema, untouched per constraint) is ignored and overridden below.
-  const orgId = c.get('orgId');
-  if (!orgId) return c.json({ error: 'Authentication required' }, 401) as never;
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
-  const projectDenied = await requireProjectInOrg(c, input.projectId);
-  if (projectDenied) return projectDenied as never;
-
   const [log] = await db.insert(attendanceLogs).values({
-    organizationId: orgId,
+    organizationId: input.organizationId,
     userId: input.userId,
     projectId: input.projectId,
     clockInAt: input.clockInAt ? new Date(input.clockInAt) : new Date(),
@@ -83,13 +70,6 @@ attendanceApp.openapi(clockOutRoute, async (c) => {
   const [log] = await db.select().from(attendanceLogs).where(eq(attendanceLogs.id, input.id)).limit(1);
   if (!log) return c.json({ error: 'Attendance log not found' }, 404);
   if (log.clockOutAt) return c.json({ error: 'Already clocked out' }, 400);
-
-  // S6: the shift must belong to the caller's org (skipped under dev bypass).
-  const orgId = c.get('orgId');
-  if (!isDevBypass(c)) {
-    if (!orgId) return c.json({ error: 'Authentication required' }, 401);
-    if (log.organizationId !== orgId) return c.json({ error: 'Forbidden' }, 403);
-  }
 
   const clockOutAt = input.clockOutAt ? new Date(input.clockOutAt) : new Date();
   const clockInAt = new Date(log.clockInAt);
