@@ -31,7 +31,7 @@ const crewMemberCreateRoute = createRoute({
 crewsApp.openapi(crewMemberCreateRoute, async (c) => {
   const crewId = c.req.param('crewId');
   const denied = await requireCrewInOrg(c, crewId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const input = c.req.valid('json') as CrewMemberInput;
   const [member] = await db.insert(crewMembers).values({
     crewId,

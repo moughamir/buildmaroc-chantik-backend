@@ -88,7 +88,7 @@ syncApp.openapi(syncBatchRoute, async (c) => {
     const denied = action.type === 'CREATE_HOTSPOT'
       ? await requirePanoramaInOrg(c, action.payload.panoramaId)
       : await requireHotspotInOrg(c, action.payload.id);
-    if (denied) return denied;
+    if (denied) return denied as never;
   }
 
   const results: { clientGuid: string; status: 'synced'; data: typeof hotspots.$inferSelect }[] = [];

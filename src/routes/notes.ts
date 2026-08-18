@@ -36,7 +36,7 @@ const notesListRoute = createRoute({
 notesApp.openapi(notesListRoute, async (c) => {
   const projectId = c.req.param('projectId') as string;
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const result = await db.select().from(notes).where(eq(notes.projectId, projectId));
   return c.json(result);
 });
@@ -59,7 +59,7 @@ const noteCreateRoute = createRoute({
 notesApp.openapi(noteCreateRoute, async (c) => {
   const projectId = c.req.param('projectId') as string;
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const userId = ((c as any).get('userId') as string) || '';
   const input = c.req.valid('json') as NoteCreateInput;
   const [note] = await db.insert(notes).values({
@@ -91,9 +91,9 @@ const notePatchRoute = createRoute({
 });
 
 notesApp.openapi(notePatchRoute, async (c) => {
-  const projectId = c.req.param('projectId');
+  const projectId = c.req.param('projectId') as string;
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const noteId = c.req.param('noteId');
   const input = c.req.valid('json') as NoteUpdateInput;
   const updates: Record<string, unknown> = {};
@@ -127,9 +127,9 @@ const noteDeleteRoute = createRoute({
 });
 
 notesApp.openapi(noteDeleteRoute, async (c) => {
-  const projectId = c.req.param('projectId');
+  const projectId = c.req.param('projectId') as string;
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const noteId = c.req.param('noteId');
   const [deleted] = await db.delete(notes).where(and(eq(notes.id, noteId), eq(notes.projectId, projectId))).returning();
   if (!deleted) return c.json({ error: 'Note not found' }, 404);

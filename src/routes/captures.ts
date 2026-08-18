@@ -44,7 +44,7 @@ capturesApp.openapi(uploadUrlRoute, async (c) => {
   const orgId = c.get('orgId');
   if (!orgId) return c.json({ error: 'Authentication required' }, 401);
   const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied;
+  if (denied) return denied as never;
 
   const { fileName, fileType } = c.req.valid('json') as UploadUrlInput;
   if (!supabase) return c.json({ error: 'Storage not configured' }, 500);

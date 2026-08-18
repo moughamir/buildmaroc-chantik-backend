@@ -35,7 +35,7 @@ const equipmentPatchRoute = createRoute({
 equipmentApp.openapi(equipmentPatchRoute, async (c) => {
   const eqId = c.req.param('eqId');
   const denied = await requireEquipmentInOrg(c, eqId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const input = c.req.valid('json') as EquipmentUpdateInput;
   const updates: Record<string, unknown> = {};
   if (input.status !== undefined) updates.status = input.status;

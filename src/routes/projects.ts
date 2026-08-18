@@ -171,7 +171,7 @@ const projectGetRoute = createRoute({
 projectsApp.openapi(projectGetRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
@@ -287,7 +287,7 @@ const projectPatchRoute = createRoute({
 projectsApp.openapi(projectPatchRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const input = c.req.valid('json') as ProjectInput;
   const updates: Record<string, unknown> = {};
   if (input.name !== undefined) updates.name = input.name;
@@ -324,7 +324,7 @@ const projectHealthRoute = createRoute({
 projectsApp.openapi(projectHealthRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const [health] = await db.select().from(projectHealthView).where(eq(projectHealthView.projectId, projectId)).limit(1);
   if (!health) return c.json({ error: 'Project not found' }, 404);
   return c.json(health);
@@ -346,7 +346,7 @@ const projectZonesListRoute = createRoute({
 projectsApp.openapi(projectZonesListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const result = await db.select().from(zones).where(eq(zones.projectId, projectId));
   return c.json(result);
 });
@@ -370,7 +370,7 @@ const projectZonesCreateRoute = createRoute({
 projectsApp.openapi(projectZonesCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const input = c.req.valid('json') as ZoneCreateInput;
   const [zone] = await db.insert(zones).values({
     projectId,
@@ -397,7 +397,7 @@ const projectAttendanceRoute = createRoute({
 projectsApp.openapi(projectAttendanceRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const result = await db
     .select({
       id: attendanceLogs.id,
@@ -431,7 +431,7 @@ const projectDailyLogsListRoute = createRoute({
 projectsApp.openapi(projectDailyLogsListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const result = await db.select().from(siteDailyLogs).where(eq(siteDailyLogs.projectId, projectId));
   return c.json(result);
 });
@@ -455,7 +455,7 @@ const projectDailyLogsCreateRoute = createRoute({
 projectsApp.openapi(projectDailyLogsCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const input = c.req.valid('json') as SiteDailyLogInput;
   const [log] = await db.insert(siteDailyLogs).values({
     projectId,
@@ -486,7 +486,7 @@ const projectRfisListRoute = createRoute({
 projectsApp.openapi(projectRfisListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const result = await db.select().from(rfis).where(eq(rfis.projectId, projectId));
   return c.json(result);
 });
@@ -510,7 +510,7 @@ const projectRfisCreateRoute = createRoute({
 projectsApp.openapi(projectRfisCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const input = c.req.valid('json') as RfiInput;
   const [maxRfi] = await db.select({ maxNum: rfis.rfiNumber }).from(rfis).where(eq(rfis.projectId, projectId)).orderBy(desc(rfis.rfiNumber)).limit(1);
   const nextNumber = maxRfi ? maxRfi.maxNum + 1 : 1;
@@ -546,7 +546,7 @@ const projectChangeOrdersListRoute = createRoute({
 projectsApp.openapi(projectChangeOrdersListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const result = await db.select().from(changeOrders).where(eq(changeOrders.projectId, projectId));
   return c.json(result);
 });
@@ -570,7 +570,7 @@ const projectChangeOrdersCreateRoute = createRoute({
 projectsApp.openapi(projectChangeOrdersCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const input = c.req.valid('json') as ChangeOrderInput;
   const [co] = await db.insert(changeOrders).values({
     projectId,
@@ -603,7 +603,7 @@ const projectBlueprintsListRoute = createRoute({
 projectsApp.openapi(projectBlueprintsListRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const result = await db.select().from(blueprintSheets).where(eq(blueprintSheets.projectId, projectId));
   return c.json(result);
 });
@@ -627,7 +627,7 @@ const projectBlueprintsCreateRoute = createRoute({
 projectsApp.openapi(projectBlueprintsCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
   const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const input = c.req.valid('json') as BlueprintSheetInput;
   const [sheet] = await db.insert(blueprintSheets).values({
     projectId,

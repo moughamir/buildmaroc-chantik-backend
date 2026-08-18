@@ -39,11 +39,11 @@ attendanceApp.openapi(clockInRoute, async (c) => {
   // session context (c.get('orgId')). The body field (still present in the
   // shared schema, untouched per constraint) is ignored and overridden below.
   const orgId = c.get('orgId');
-  if (!orgId) return c.json({ error: 'Authentication required' }, 401);
+  if (!orgId) return c.json({ error: 'Authentication required' }, 401) as never;
   const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied;
+  if (denied) return denied as never;
   const projectDenied = await requireProjectInOrg(c, input.projectId);
-  if (projectDenied) return projectDenied;
+  if (projectDenied) return projectDenied as never;
 
   const [log] = await db.insert(attendanceLogs).values({
     organizationId: orgId,
