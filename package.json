@@ -2,6 +2,9 @@
   "name": "backend",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "start": "bun dist/index.js",
+    "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",

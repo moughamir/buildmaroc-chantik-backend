@@ -24,6 +24,8 @@ import type {
   UpdateHotspotRestInput,
 } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
+import type { SessionVariables } from '../middleware/session';
+import { requireZoneInOrg, requireCapturePointInOrg, requirePanoramaInOrg, requireHotspotInOrg } from '../middleware/tenant';
 
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -33,7 +35,7 @@ const supabase = supabaseUrl && supabaseServiceRoleKey
 
 // Mounted at /api/v1.
 // L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
-export const spatialApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
+export const spatialApp = new OpenAPIHono<{ Variables: SessionVariables }>({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
 const zoneCapturePointsListRoute = createRoute({
   method: 'get',
@@ -50,6 +52,8 @@ const zoneCapturePointsListRoute = createRoute({
 
 spatialApp.openapi(zoneCapturePointsListRoute, async (c) => {
   const zoneId = c.req.param('zoneId');
+  const denied = await requireZoneInOrg(c, zoneId);
+  if (denied) return denied as never;
   const result = await db.select().from(capturePoints).where(eq(capturePoints.zoneId, zoneId));
   return c.json(result);
 });
@@ -72,6 +76,8 @@ const zoneCapturePointsCreateRoute = createRoute({
 
 spatialApp.openapi(zoneCapturePointsCreateRoute, async (c) => {
   const zoneId = c.req.param('zoneId');
+  const denied = await requireZoneInOrg(c, zoneId);
+  if (denied) return denied as never;
   const input = c.req.valid('json') as CapturePointCreateInput;
   const [cp] = await db.insert(capturePoints).values({
     zoneId,
@@ -100,6 +106,8 @@ const panoramaCreateRoute = createRoute({
 
 spatialApp.openapi(panoramaCreateRoute, async (c) => {
   const cpId = c.req.param('cpId');
+  const denied = await requireCapturePointInOrg(c, cpId);
+  if (denied) return denied as never;
   const input = c.req.valid('json') as PanoramaUploadInput;
   const [panorama] = await db.insert(panoramas).values({
     capturePointId: cpId,
@@ -127,6 +135,8 @@ const panoramaListRoute = createRoute({
 
 spatialApp.openapi(panoramaListRoute, async (c) => {
   const cpId = c.req.param('cpId');
+  const denied = await requireCapturePointInOrg(c, cpId);
+  if (denied) return denied as never;
   const result = await db.select().from(panoramas)
     .where(eq(panoramas.capturePointId, cpId))
     .orderBy(panoramas.capturedAt);
@@ -156,6 +166,8 @@ const panoramaAssetRoute = createRoute({
 
 spatialApp.openapi(panoramaAssetRoute, async (c) => {
   const panoramaId = c.req.param('panoramaId');
+  const denied = await requirePanoramaInOrg(c, panoramaId);
+  if (denied) return denied as never;
   const [panorama] = await db.select().from(panoramas).where(eq(panoramas.id, panoramaId)).limit(1);
   if (!panorama) return c.json({ error: 'Panorama not found' }, 404);
 
@@ -185,6 +197,8 @@ const hotspotListRoute = createRoute({
 
 spatialApp.openapi(hotspotListRoute, async (c) => {
   const panoramaId = c.req.param('panoramaId');
+  const denied = await requirePanoramaInOrg(c, panoramaId);
+  if (denied) return denied as never;
   const result = await db.select().from(hotspots).where(eq(hotspots.panoramaId, panoramaId));
   return c.json(result);
 });
@@ -207,6 +221,8 @@ const hotspotCreateRoute = createRoute({
 
 spatialApp.openapi(hotspotCreateRoute, async (c) => {
   const panoramaId = c.req.param('panoramaId');
+  const denied = await requirePanoramaInOrg(c, panoramaId);
+  if (denied) return denied as never;
   const input = c.req.valid('json') as CreateHotspotRestInput;
   const [hotspot] = await db.insert(hotspots).values({
     panoramaId,
@@ -242,6 +258,8 @@ const hotspotPatchRoute = createRoute({
 
 spatialApp.openapi(hotspotPatchRoute, async (c) => {
   const hotspotId = c.req.param('hotspotId');
+  const denied = await requireHotspotInOrg(c, hotspotId);
+  if (denied) return denied as never;
   const input = c.req.valid('json') as UpdateHotspotRestInput;
   const updates: Record<string, unknown> = {};
   if (input.title !== undefined) updates.title = input.title;

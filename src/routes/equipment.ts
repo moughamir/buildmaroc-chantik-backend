@@ -6,10 +6,12 @@ import { equipment } from '../db/schema';
 import { equipmentUpdateSchema, equipmentSelectSchema } from '../validation/schemas';
 import type { EquipmentUpdateInput } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
+import type { SessionVariables } from '../middleware/session';
+import { requireEquipmentInOrg } from '../middleware/tenant';
 
 // Mounted at /api/v1/equipment.
 // L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
-export const equipmentApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
+export const equipmentApp = new OpenAPIHono<{ Variables: SessionVariables }>({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
 const equipmentPatchRoute = createRoute({
   method: 'patch',
@@ -32,6 +34,8 @@ const equipmentPatchRoute = createRoute({
 
 equipmentApp.openapi(equipmentPatchRoute, async (c) => {
   const eqId = c.req.param('eqId');
+  const denied = await requireEquipmentInOrg(c, eqId);
+  if (denied) return denied as never;
   const input = c.req.valid('json') as EquipmentUpdateInput;
   const updates: Record<string, unknown> = {};
   if (input.status !== undefined) updates.status = input.status;

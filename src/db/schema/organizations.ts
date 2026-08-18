@@ -1,6 +1,4 @@
-import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, timestamp, varchar, jsonb, index, uniqueIndex, unique, primaryKey, pgPolicy, pgRole } from 'drizzle-orm/pg-core';
-import { authenticatedRole } from './enums';
+import { pgTable, uuid, text, timestamp, varchar, jsonb, index, uniqueIndex, unique, primaryKey } from 'drizzle-orm/pg-core';
 import { orgRoleEnum, inviteStatusEnum } from './enums';
 import { users } from './users';
 
@@ -14,16 +12,6 @@ export const organizations = pgTable('organizations', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('org_slug_idx').on(t.slug),
-  pgPolicy('Members can view their own organizations', {
-    as: 'permissive',
-    to: authenticatedRole,
-    for: 'select',
-    using: sql`EXISTS (
-      SELECT 1 FROM organization_members 
-      WHERE organization_members.organization_id = ${t.id} 
-      AND organization_members.user_id = (select auth.uid())
-    )`,
-  })
 ]);
 
 export const organizationMembers = pgTable('organization_members', {

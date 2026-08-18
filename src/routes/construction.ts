@@ -11,10 +11,12 @@ import {
 } from '../validation/schemas';
 import type { RfiUpdateInput, ChangeOrderUpdateInput } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
+import type { SessionVariables } from '../middleware/session';
+import { requireRfiInOrg, requireChangeOrderInOrg } from '../middleware/tenant';
 
 // Mounted at /api/v1/construction.
 // L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
-export const constructionApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
+export const constructionApp = new OpenAPIHono<{ Variables: SessionVariables }>({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
 const rfiPatchRoute = createRoute({
   method: 'patch',
@@ -37,6 +39,8 @@ const rfiPatchRoute = createRoute({
 
 constructionApp.openapi(rfiPatchRoute, async (c) => {
   const rfiId = c.req.param('rfiId');
+  const denied = await requireRfiInOrg(c, rfiId);
+  if (denied) return denied as never;
   const input = c.req.valid('json') as RfiUpdateInput;
   const updates: Record<string, unknown> = {};
   if (input.answer !== undefined) updates.answer = input.answer;
@@ -73,6 +77,8 @@ const changeOrderPatchRoute = createRoute({
 
 constructionApp.openapi(changeOrderPatchRoute, async (c) => {
   const coId = c.req.param('coId');
+  const denied = await requireChangeOrderInOrg(c, coId);
+  if (denied) return denied as never;
   const input = c.req.valid('json') as ChangeOrderUpdateInput;
   const updates: Record<string, unknown> = { status: input.status };
   if (input.approvedById !== undefined) updates.approvedById = input.approvedById;
