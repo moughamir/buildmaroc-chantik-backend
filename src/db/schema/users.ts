@@ -1,4 +1,6 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, uuid, text, timestamp, varchar, boolean, index } from 'drizzle-orm/pg-core';
+import { authenticatedRole } from './enums';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(),

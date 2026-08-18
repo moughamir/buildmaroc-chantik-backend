@@ -1,8 +1,7 @@
 import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
 import { z } from 'zod';
 import { db } from '../db';
-import { eq, desc, inArray, countDistinct } from 'drizzle-orm';
-import { createClient } from '@supabase/supabase-js';
+import { eq, desc, inArray } from 'drizzle-orm';
 import {
   projects,
   zones,
@@ -16,8 +15,6 @@ import {
   attendanceLogs,
   siteDailyLogs,
   organizationMembers,
-  notes,
-  users,
 } from '../db/schema';
 import {
   projectSchema,
@@ -35,27 +32,15 @@ import {
   attendanceLogSelectSchema,
   projectHealthSelectSchema,
   projectWithCapturesSchema,
-  projectListItemSchema,
 } from '../validation/schemas';
 import type { ProjectInput, ZoneCreateInput, RfiInput, ChangeOrderInput, BlueprintSheetInput, SiteDailyLogInput } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
-import type { SessionVariables } from '../middleware/session';
-import { requireProjectInOrg } from '../middleware/tenant';
 
 const projectIdParam = { projectId: z.string().uuid() };
 
-// Supabase storage (used only to mint signed image URLs for capture panoramas).
-// Left null in local dev (empty SUPABASE_URL/KEY) so `createClient` is never
-// called with placeholder values — see spatial.ts for the same guard.
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabase = supabaseUrl && supabaseServiceRoleKey
-  ? createClient(supabaseUrl, supabaseServiceRoleKey)
-  : null;
-
 // L6c: shared 400 validation shape { error: { message, issues } } for invalid
 // bodies / params / query (defaultHook) and malformed JSON (onError).
-export const projectsApp = new OpenAPIHono<{ Variables: SessionVariables }>({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
+export const projectsApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
 const listProjectsRoute = createRoute({
   method: 'get',
@@ -63,8 +48,8 @@ const listProjectsRoute = createRoute({
   tags: ['projects'],
   responses: {
     200: {
-      description: 'List the authenticated user\'s default-org projects (with lightweight capture count + latest notes)',
-      content: { 'application/json': { schema: z.array(projectListItemSchema) } },
+      description: 'List the authenticated user\'s default-org projects (or a given org\'s)',
+      content: { 'application/json': { schema: z.array(projectSelectSchema) } },
     },
     401: {
       description: 'Authentication required',
@@ -72,84 +57,38 @@ const listProjectsRoute = createRoute({
   },
 });
 
-// [0.1] GET / — the frontend calls GET /api/v1/projects with no orgId.
-// Org resolution: session context orgId (set by sessionMiddleware from the
-// better-auth active organization), falling back to the user's first
-// organization membership when the session carries none. The legacy `?orgId=`
-// query override was removed (S6) — it let any caller read any org's projects.
+// [0.1] Alias GET / — the frontend calls GET /api/v1/projects with no orgId.
+// The org is resolved from the authenticated user's organization membership,
+// and an explicit `?orgId=` query param is honored when present (backwards-compatible).
 projectsApp.openapi(listProjectsRoute, async (c) => {
-  const userId = c.get('userId');
+  const userId = (c as any).get('userId') as string;
   if (!userId) {
     return c.json({ error: 'Authentication required' }, 401);
   }
 
-  let orgId = c.get('orgId');
+  const orgId = c.req.query('orgId');
 
-  if (!orgId) {
-    // Fallback: user's first organization membership (default org).
-    const [member] = await db
-      .select({ organizationId: organizationMembers.organizationId })
-      .from(organizationMembers)
-      .where(eq(organizationMembers.userId, userId))
-      .limit(1);
-    orgId = member?.organizationId ?? null;
+  if (orgId) {
+    // Caller passed an explicit orgId — return that org's projects directly.
+    const result = await db.select().from(projects).where(eq(projects.organizationId, orgId));
+    return c.json(result);
   }
 
-  if (!orgId) {
-    // No resolvable org (e.g. dev-bypass user with no membership) — return an
-    // empty list rather than 404/400, so list consumers (e.g. frontend
-    // store.init) don't treat this as a failure.
+  // Look up the user's first organization membership (default org)
+  const [member] = await db
+    .select({ organizationId: organizationMembers.organizationId })
+    .from(organizationMembers)
+    .where(eq(organizationMembers.userId, userId))
+    .limit(1);
+
+  if (!member) {
+    // No org membership — return an empty list rather than 404/400,
+    // so list consumers (e.g. frontend store.init) don't treat this as a failure.
     return c.json([]);
   }
 
-  const result = await db.select().from(projects).where(eq(projects.organizationId, orgId));
-  if (result.length === 0) return c.json([]);
-
-  const projectIds = result.map((p) => p.id);
-
-  // Lightweight enrichment (no nested capture objects). A "capture" is one
-  // distinct panorama `capturedAt` group per project — same grouping as
-  // `assembleCaptures`, so `capturesCount` matches the detail endpoint.
-  const captureCounts = await db
-    .select({
-      projectId: zones.projectId,
-      capturesCount: countDistinct(panoramas.capturedAt),
-    })
-    .from(zones)
-    .innerJoin(capturePoints, eq(capturePoints.zoneId, zones.id))
-    .innerJoin(panoramas, eq(panoramas.capturePointId, capturePoints.id))
-    .where(inArray(zones.projectId, projectIds))
-    .groupBy(zones.projectId);
-
-  // The 3 most recent notes per project (batched, joined with author name).
-  const noteRows = await db
-    .select({
-      projectId: notes.projectId,
-      id: notes.id,
-      text: notes.content,
-      author: users.name,
-      date: notes.createdAt,
-    })
-    .from(notes)
-    .innerJoin(users, eq(users.id, notes.createdById))
-    .where(inArray(notes.projectId, projectIds))
-    .orderBy(desc(notes.createdAt));
-
-  const capturesCountByProject = new Map(captureCounts.map((r) => [r.projectId, r.capturesCount]));
-  const notesByProject = new Map<string, { id: string; text: string; author: string | null; date: string }[]>();
-  for (const note of noteRows) {
-    const list = notesByProject.get(note.projectId) ?? [];
-    if (list.length < 3) {
-      list.push({ id: note.id, text: note.text, author: note.author, date: note.date.toISOString() });
-    }
-    notesByProject.set(note.projectId, list);
-  }
-
-  return c.json(result.map((project) => ({
-    ...project,
-    capturesCount: capturesCountByProject.get(project.id) ?? 0,
-    notes: notesByProject.get(project.id) ?? [],
-  })));
+  const result = await db.select().from(projects).where(eq(projects.organizationId, member.organizationId));
+  return c.json(result);
 });
 
 const projectGetRoute = createRoute({
@@ -170,8 +109,6 @@ const projectGetRoute = createRoute({
 
 projectsApp.openapi(projectGetRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
@@ -240,29 +177,11 @@ async function assembleCaptures(zoneRows: (typeof zones.$inferSelect)[]): Promis
       capturedAt: first.capturedAt.toISOString(),
       date: first.capturedAt.toISOString(),
       ...meta,
-      // Signed storage URL for the capture's first panorama — the 360° viewer
-      // consumes `imageUrl` directly (Pannellum panorama source). Falls back to
-      // null when Supabase storage is not configured (local dev).
-      imageUrl: await signedImageUrl(first.storagePath),
       zones: sorted.map(zoneOf),
       hotspots: sorted.flatMap((p) => hotspotsByPanoramaId.get(p.id) ?? []),
     });
   }
   return captures;
-}
-
-/**
- * Mint a short-lived signed URL for a panorama's `storage_path`. Returns null
- * when Supabase storage is not configured or signing fails, so responses stay
- * valid in local dev (no storage) and never leak raw storage paths.
- */
-async function signedImageUrl(storagePath: string): Promise<string | null> {
-  if (!supabase) return null;
-  const { data, error } = await supabase.storage
-    .from('chantik-assets')
-    .createSignedUrl(storagePath, 3600);
-  if (error || !data) return null;
-  return data.signedUrl;
 }
 
 const projectPatchRoute = createRoute({
@@ -286,8 +205,6 @@ const projectPatchRoute = createRoute({
 
 projectsApp.openapi(projectPatchRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const input = c.req.valid('json') as ProjectInput;
   const updates: Record<string, unknown> = {};
   if (input.name !== undefined) updates.name = input.name;
@@ -323,8 +240,6 @@ const projectHealthRoute = createRoute({
 
 projectsApp.openapi(projectHealthRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const [health] = await db.select().from(projectHealthView).where(eq(projectHealthView.projectId, projectId)).limit(1);
   if (!health) return c.json({ error: 'Project not found' }, 404);
   return c.json(health);
@@ -345,8 +260,6 @@ const projectZonesListRoute = createRoute({
 
 projectsApp.openapi(projectZonesListRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const result = await db.select().from(zones).where(eq(zones.projectId, projectId));
   return c.json(result);
 });
@@ -369,8 +282,6 @@ const projectZonesCreateRoute = createRoute({
 
 projectsApp.openapi(projectZonesCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const input = c.req.valid('json') as ZoneCreateInput;
   const [zone] = await db.insert(zones).values({
     projectId,
@@ -396,8 +307,6 @@ const projectAttendanceRoute = createRoute({
 
 projectsApp.openapi(projectAttendanceRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const result = await db
     .select({
       id: attendanceLogs.id,
@@ -430,8 +339,6 @@ const projectDailyLogsListRoute = createRoute({
 
 projectsApp.openapi(projectDailyLogsListRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const result = await db.select().from(siteDailyLogs).where(eq(siteDailyLogs.projectId, projectId));
   return c.json(result);
 });
@@ -454,8 +361,6 @@ const projectDailyLogsCreateRoute = createRoute({
 
 projectsApp.openapi(projectDailyLogsCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const input = c.req.valid('json') as SiteDailyLogInput;
   const [log] = await db.insert(siteDailyLogs).values({
     projectId,
@@ -485,8 +390,6 @@ const projectRfisListRoute = createRoute({
 
 projectsApp.openapi(projectRfisListRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const result = await db.select().from(rfis).where(eq(rfis.projectId, projectId));
   return c.json(result);
 });
@@ -509,8 +412,6 @@ const projectRfisCreateRoute = createRoute({
 
 projectsApp.openapi(projectRfisCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const input = c.req.valid('json') as RfiInput;
   const [maxRfi] = await db.select({ maxNum: rfis.rfiNumber }).from(rfis).where(eq(rfis.projectId, projectId)).orderBy(desc(rfis.rfiNumber)).limit(1);
   const nextNumber = maxRfi ? maxRfi.maxNum + 1 : 1;
@@ -545,8 +446,6 @@ const projectChangeOrdersListRoute = createRoute({
 
 projectsApp.openapi(projectChangeOrdersListRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const result = await db.select().from(changeOrders).where(eq(changeOrders.projectId, projectId));
   return c.json(result);
 });
@@ -569,8 +468,6 @@ const projectChangeOrdersCreateRoute = createRoute({
 
 projectsApp.openapi(projectChangeOrdersCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const input = c.req.valid('json') as ChangeOrderInput;
   const [co] = await db.insert(changeOrders).values({
     projectId,
@@ -602,8 +499,6 @@ const projectBlueprintsListRoute = createRoute({
 
 projectsApp.openapi(projectBlueprintsListRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const result = await db.select().from(blueprintSheets).where(eq(blueprintSheets.projectId, projectId));
   return c.json(result);
 });
@@ -626,8 +521,6 @@ const projectBlueprintsCreateRoute = createRoute({
 
 projectsApp.openapi(projectBlueprintsCreateRoute, async (c) => {
   const projectId = c.req.param('projectId');
-  const denied = await requireProjectInOrg(c, projectId);
-  if (denied) return denied as never;
   const input = c.req.valid('json') as BlueprintSheetInput;
   const [sheet] = await db.insert(blueprintSheets).values({
     projectId,

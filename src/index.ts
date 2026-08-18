@@ -9,7 +9,7 @@ import { capturesApp } from './routes/captures';
 import { organizationsApp } from './routes/organizations';
 import { usersApp } from './routes/users';
 import { projectsApp } from './routes/projects';
-import { invitationsApp } from './routes/invitations';
+import { invitationsRouter } from './routes/invitations';
 import { crewsApp } from './routes/crews';
 import { spatialApp } from './routes/spatial';
 import { attendanceApp } from './routes/attendance';
@@ -72,7 +72,7 @@ app = app
   .route('/api/v1/organizations', organizationsApp)
   .route('/api/v1/users', usersApp)
   .route('/api/v1/projects', projectsApp)
-  .route('/api/v1/invitations', invitationsApp)
+  .route('/api/v1/invitations', invitationsRouter)
   .route('/api/v1/crews', crewsApp)
   .route('/api/v1/spatial', spatialApp)
   .route('/api/v1', attendanceApp)

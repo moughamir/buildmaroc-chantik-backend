@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createInsertSchema, createUpdateSchema, createSelectSchema } from 'drizzle-zod';
 import { projects, zones, capturePoints, panoramas, hotspots } from '../db/schema/projects';
 import { notes } from '../db/schema/notes';
-import { pointageRecords, tradeCatalog, subcontractors } from '../db/schema/pointage';
+import { pointageRecords, tradeCatalog } from '../db/schema/pointage';
 import { rfis, changeOrders, blueprintSheets, equipment } from '../db/schema/construction';
 import { workCrews, crewMembers, attendanceLogs, siteDailyLogs } from '../db/schema/workforce';
 import { organizations, organizationMembers, organizationInvitations, teams, teamMembers } from '../db/schema/organizations';
@@ -402,24 +402,9 @@ export const pointageRecordUpdateSchema = createUpdateSchema(pointageRecords, {
   .refine((o) => Object.keys(o).length > 0, { message: 'At least one field is required' });
 
 // Query-string filter for GET /projects/:projectId/pointage — not an insert
-// shape, so it stays a plain hand-written schema (date arrives as an ISO
-// date-only string "YYYY-MM-DD" from the frontend).
+// shape, so it stays a plain hand-written schema (date arrives as an ISO string).
 export const pointageQuerySchema = z.object({
-  date: z.iso.date().optional(),
-});
-
-// Body for PATCH /projects/:projectId/pointage/validate — toggles
-// `isValidated` on every pointage record for the given ISO date.
-export const pointageValidateSchema = z.object({
-  date: z.iso.date(),
-  validated: z.boolean(),
-});
-
-// Body for POST /projects/:projectId/subcontractors. The router supplies
-// projectId from the URL, so only company/specialty are part of the body.
-export const subcontractorCreateSchema = z.object({
-  company: z.string().min(1),
-  specialty: z.string().min(1),
+  date: z.string().datetime().optional(),
 });
 
 export type NoteCreateInput = z.infer<typeof noteCreateSchema>;
@@ -427,8 +412,6 @@ export type NoteUpdateInput = z.infer<typeof noteUpdateSchema>;
 export type PointageRecordCreateInput = z.infer<typeof pointageRecordCreateSchema>;
 export type PointageRecordUpdateInput = z.infer<typeof pointageRecordUpdateSchema>;
 export type PointageQueryInput = z.infer<typeof pointageQuerySchema>;
-export type PointageValidateInput = z.infer<typeof pointageValidateSchema>;
-export type SubcontractorCreateInput = z.infer<typeof subcontractorCreateSchema>;
 export type RfiUpdateInput = z.infer<typeof rfiUpdateSchema>;
 export type ChangeOrderUpdateInput = z.infer<typeof changeOrderUpdateSchema>;
 export type EquipmentUpdateInput = z.infer<typeof equipmentUpdateSchema>;
@@ -478,23 +461,10 @@ export const attendanceLogSelectSchema = createSelectSchema(attendanceLogs).pick
 });
 export const projectHealthSelectSchema = createSelectSchema(projectHealthView);
 export const tradeCatalogSelectSchema = createSelectSchema(tradeCatalog);
-export const subcontractorSelectSchema = createSelectSchema(subcontractors);
 
 // GET /projects/{projectId} appends the nested `captures` array to the row.
 export const projectWithCapturesSchema = projectSelectSchema.extend({
   captures: z.array(z.any()),
-});
-
-// GET /projects list item — flat row + lightweight capture count and the 3
-// most recent notes (content, author name, date). No nested capture objects.
-export const projectListItemSchema = projectSelectSchema.extend({
-  capturesCount: z.number().int(),
-  notes: z.array(z.object({
-    id: z.string().uuid(),
-    text: z.string(),
-    author: z.string().nullable(),
-    date: z.string(),
-  })),
 });
 
 // Shared error/ack shapes returned by the converted routes.

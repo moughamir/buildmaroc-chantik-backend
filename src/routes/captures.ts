@@ -3,8 +3,6 @@ import { z } from 'zod';
 import { uploadUrlSchema, uploadUrlResponseSchema } from '../validation/schemas';
 import type { UploadUrlInput } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
-import type { SessionVariables } from '../middleware/session';
-import { requireOrgMembership } from '../middleware/tenant';
 
 let supabase: ReturnType<typeof import("@supabase/supabase-js").createClient> | null = null;
 try {
@@ -19,7 +17,9 @@ try {
 }
 
 // Mounted at /api/v1/captures.
-export const capturesApp = new OpenAPIHono<{ Variables: SessionVariables }>({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
+// L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
+// The signed-upload-url response shape is kept byte-identical.
+export const capturesApp = new OpenAPIHono({ defaultHook: validationErrorHook }).onError(validationErrorHandler);
 
 const uploadUrlRoute = createRoute({
   method: 'post',
@@ -33,22 +33,19 @@ const uploadUrlRoute = createRoute({
       description: 'Signed upload URL for a panorama asset',
       content: { 'application/json': { schema: uploadUrlResponseSchema } },
     },
-    400: { description: 'Supabase storage error' },
-    401: { description: 'Authentication required' },
-    403: { description: 'Forbidden' },
-    500: { description: 'Storage not configured' },
+    400: {
+      description: 'Supabase storage error',
+    },
+    500: {
+      description: 'Storage not configured',
+    },
   },
 });
 
 capturesApp.openapi(uploadUrlRoute, async (c) => {
-  const orgId = c.get('orgId');
-  if (!orgId) return c.json({ error: 'Authentication required' }, 401);
-  const denied = await requireOrgMembership(c, orgId);
-  if (denied) return denied as never;
-
   const { fileName, fileType } = c.req.valid('json') as UploadUrlInput;
   if (!supabase) return c.json({ error: 'Storage not configured' }, 500);
-  const path = `organizations/${orgId}/panoramas/${Date.now()}_${fileName}`;
+  const path = `panoramas/${Date.now()}_${fileName}`;
 
   const { data, error } = await supabase.storage
     .from('chantik-assets')

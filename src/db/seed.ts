@@ -39,9 +39,9 @@ import {
   pointageRecords,
 } from './schema';
 // @ts-ignore
-import { INITIAL_CHANTIERS } from '../../../frontend/src/data/mockChantiers.js';
+import { INITIAL_CHANTIERS } from '../../../frontend/src/data/mockChantiers.ts';
 // @ts-ignore
-import { INITIAL_COMPANY_TRADES, INITIAL_SUBCONTRACTORS } from '../../../frontend/src/data/pointageMockData.js';
+import { INITIAL_COMPANY_TRADES, INITIAL_SUBCONTRACTORS } from '../../../frontend/src/data/pointageMockData.ts';
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -298,8 +298,6 @@ async function seed() {
   }
 
   // --- 5. Trade Catalog ---
-  // Track inserted IDs so pointage records can reference them by trade name.
-  const tradeRows: { id: string; name: string }[] = [];
   for (const trade of INITIAL_COMPANY_TRADES) {
     const tradeId = generateId();
     await db.insert(tradeCatalog).values({
@@ -309,9 +307,7 @@ async function seed() {
       icon: trade.icon || null,
       description: trade.notes || null,
     } as any);
-    tradeRows.push({ id: tradeId, name: trade.name });
   }
-  const tradeIdByName = new Map(tradeRows.map((t) => [t.name, t.id]));
   console.log(`  ✅ Seeded trade catalog (${INITIAL_COMPANY_TRADES.length} trades)`);
 
   // --- 6. Projects, Zones, Panoramas, Hotspots, Equipment, RFIs, COs, Crews, Attendance, Audit Logs ---
@@ -401,16 +397,13 @@ async function seed() {
 
       // Subcontractors
       const subs = INITIAL_SUBCONTRACTORS;
-      const subRows: { id: string; company: string }[] = [];
       for (const sub of subs) {
-        const subId = generateId();
         await db.insert(subcontractors).values({
-          id: subId,
+          id: generateId(),
           projectId,
           company: sub.company,
-          specialty: sub.specialty || sub.trade || 'Général',
+          specialty: sub.trade || 'Général',
         } as any);
-        subRows.push({ id: subId, company: sub.company });
       }
 
       // Zones & Captures
@@ -495,35 +488,6 @@ async function seed() {
         workSummary: 'Coulage radier et ferraillage zone B.',
         safetyIncidentsReported: false,
       } as any);
-
-      // Pointage Records (daily workforce headcount) — re-seeded for each
-      // project: 5 company trades from the seeded trade catalog + up to 3
-      // subcontractor entries. `pointage_records` has no user/crew FK columns,
-      // so records reference the seeded `tradeCatalog` / `subcontractors`
-      // (the crew + org users above set the date and counts context).
-      const pointageDate = new Date();
-      for (const trade of INITIAL_COMPANY_TRADES.slice(0, 5)) {
-        const tradeId = tradeIdByName.get(trade.name);
-        if (!tradeId) continue;
-        await db.insert(pointageRecords).values({
-          id: generateId(),
-          projectId,
-          date: pointageDate,
-          tradeId,
-          count: Math.max(1, (trade.count ?? 0) + faker.number.int({ min: -2, max: 3 })),
-          isCompanyTrade: 1,
-        } as any);
-      }
-      for (const sub of subRows.slice(0, 3)) {
-        await db.insert(pointageRecords).values({
-          id: generateId(),
-          projectId,
-          date: pointageDate,
-          count: faker.number.int({ min: 2, max: 10 }),
-          isCompanyTrade: 0,
-          subcontractorId: sub.id,
-        } as any);
-      }
 
       // Audit Logs
       await db.insert(auditLogs).values({
