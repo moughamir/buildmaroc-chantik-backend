@@ -79,6 +79,7 @@ import type {
 } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
 import type { SessionVariables } from '../middleware/session';
+import { enqueueWebhookEvent } from '../services/webhook-delivery';
 
 // Mounted at /api/v1/organizations.
 // L6e: OpenAPIHono + createRoute pattern with the shared 400 validation shape.
@@ -682,6 +683,11 @@ organizationsApp.openapi(orgProjectCreateRoute, async (c) => {
     coordinates: input.coordinates,
     status: input.status || 'planning',
   }).returning();
+
+  // PLAN 4.7 — fire-and-forget webhook enqueue (delivery happens in the worker).
+  await enqueueWebhookEvent('project.created', { project }, orgId).catch((err) => {
+    console.error(`[webhook] enqueue project.created failed: ${err}`);
+  });
 
   return c.json(project, 201);
 });

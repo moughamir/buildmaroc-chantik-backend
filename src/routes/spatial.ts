@@ -7,6 +7,8 @@ import {
   capturePoints,
   panoramas,
   hotspots,
+  zones,
+  projects,
 } from '../db/schema';
 import {
   capturePointCreateSchema,
@@ -24,6 +26,33 @@ import type {
   UpdateHotspotRestInput,
 } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
+import { enqueueWebhookEvent } from '../services/webhook-delivery';
+
+// PLAN 4.7 — resolve the owning organization for a capture point (cp → zone → project).
+async function orgIdForCapturePoint(cpId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ organizationId: projects.organizationId })
+    .from(capturePoints)
+    .innerJoin(zones, eq(zones.id, capturePoints.zoneId))
+    .innerJoin(projects, eq(projects.id, zones.projectId))
+    .where(eq(capturePoints.id, cpId))
+    .limit(1);
+  return row?.organizationId ?? null;
+}
+
+// PLAN 4.7 — resolve the owning organization for a hotspot (hotspot → panorama → cp → zone → project).
+async function orgIdForHotspot(hotspotId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ organizationId: projects.organizationId })
+    .from(hotspots)
+    .innerJoin(panoramas, eq(panoramas.id, hotspots.panoramaId))
+    .innerJoin(capturePoints, eq(capturePoints.id, panoramas.capturePointId))
+    .innerJoin(zones, eq(zones.id, capturePoints.zoneId))
+    .innerJoin(projects, eq(projects.id, zones.projectId))
+    .where(eq(hotspots.id, hotspotId))
+    .limit(1);
+  return row?.organizationId ?? null;
+}
 
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -108,6 +137,14 @@ spatialApp.openapi(panoramaCreateRoute, async (c) => {
     uploadedById: input.uploadedById,
     metadata: input.metadata,
   }).returning();
+
+  // PLAN 4.7 — fire-and-forget webhook enqueue (delivery happens in the worker).
+  const orgId = await orgIdForCapturePoint(cpId);
+  if (orgId) {
+    await enqueueWebhookEvent('panorama.uploaded', { panorama }, orgId).catch((err) => {
+      console.error(`[webhook] enqueue panorama.uploaded failed: ${err}`);
+    });
+  }
 
   return c.json(panorama, 201);
 });
@@ -254,5 +291,16 @@ spatialApp.openapi(hotspotPatchRoute, async (c) => {
     .returning();
 
   if (!hotspot) return c.json({ error: 'Hotspot not found' }, 404);
+
+  // PLAN 4.7 — fire-and-forget webhook enqueue when a hotspot is resolved.
+  if (hotspot.status === 'resolved') {
+    const orgId = await orgIdForHotspot(hotspotId);
+    if (orgId) {
+      await enqueueWebhookEvent('hotspot.resolved', { hotspot }, orgId).catch((err) => {
+        console.error(`[webhook] enqueue hotspot.resolved failed: ${err}`);
+      });
+    }
+  }
+
   return c.json(hotspot);
 });

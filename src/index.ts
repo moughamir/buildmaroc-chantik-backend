@@ -19,6 +19,7 @@ import { notesApp } from './routes/notes';
 import { pointageApp } from './routes/pointage';
 import { authApp } from './routes/auth';
 import { adminApp } from './routes/admin';
+import { processPendingDeliveries } from './services/webhook-delivery';
 
 let app = new OpenAPIHono<{ Variables: SessionVariables }>();
 
@@ -100,6 +101,16 @@ app.get('/api/v1/docs', swaggerUI({ url: '/api/v1/doc', persistAuthorization: tr
 
 // App type for the future typed RPC client (hc<AppType>).
 export type AppType = typeof app;
+
+// PLAN 4.7 — webhook delivery worker. Polls due deliveries every
+// WEBHOOK_POLL_INTERVAL_MS (default 15s); retries with backoff happen inside
+// processPendingDeliveries. Fire-and-forget: failures are logged, never crash.
+const WEBHOOK_POLL_INTERVAL_MS = Number(process.env.WEBHOOK_POLL_INTERVAL_MS || 15_000);
+setInterval(() => {
+  processPendingDeliveries().catch((err) => {
+    console.error(`[webhook-worker] delivery run failed: ${err}`);
+  });
+}, WEBHOOK_POLL_INTERVAL_MS);
 
 export default {
   port: process.env.PORT || 8080,

@@ -39,4 +39,25 @@ export const webhooks = pgTable('webhooks', {
   secret: text('secret').notNull(), 
   isActive: boolean('is_active').default(true).notNull(),
   events: webhookEventEnum('events').array().notNull(), 
-});
+}, (t) => [
+  index('webhook_org_idx').on(t.organizationId),
+]);
+
+// PLAN 4.7 — delivery ledger for outbound webhook events (per webhook per event).
+// One row per (webhook, event) enqueue; the delivery worker advances attempts
+// with exponential backoff until `delivered` or `failed` (then deactivates the webhook).
+export const webhookDeliveries = pgTable('webhook_deliveries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  webhookId: uuid('webhook_id').references(() => webhooks.id, { onDelete: 'cascade' }).notNull(),
+  event: webhookEventEnum('event').notNull(),
+  payload: jsonb('payload').notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('pending'), // pending | delivered | failed
+  attempts: integer('attempts').notNull().default(0),
+  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }).notNull().defaultNow(),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+}, (t) => [
+  index('webhook_delivery_webhook_idx').on(t.webhookId),
+  index('webhook_delivery_due_idx').on(t.status, t.nextRetryAt),
+]);

@@ -4,7 +4,7 @@ export { users, userPreferences, userSecurityLogs } from './users';
 export { sessions, accounts } from './auth';
 export { organizations, organizationMembers, organizationInvitations, teams, teamMembers } from './organizations';
 export { customRoles, rolePermissions, userRoles } from './rbac';
-export { subscriptions, invoices, apiKeys, webhooks } from './billing';
+export { subscriptions, invoices, apiKeys, webhooks, webhookDeliveries } from './billing';
 export { projects, projectMembers, zones, capturePoints, panoramas, hotspots } from './projects';
 export { auditLogs } from './audit';
 export { projectHealthView } from './views';
