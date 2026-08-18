@@ -610,6 +610,10 @@ export const adminWebhookSchema = z.object({
   isActive: z.boolean(),
   events: z.array(z.string()),
 });
+export const adminProjectSchema = projectSelectSchema.extend({
+  orgName: z.string().nullable().optional(),
+}).openapi('AdminProject');
+export const adminUserSchema = userSelectSchema.extend({}).openapi('AdminUser');
 
 // ============================================================================
 // 13. AUTH (OpenAPI-documented sign-in for Swagger / API clients)

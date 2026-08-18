@@ -1,10 +1,11 @@
 import { createRoute, OpenAPIHono } from '@hono/zod-openapi';
 import { z } from 'zod';
 import { db } from '../db';
-import { desc, sql } from 'drizzle-orm';
+import { desc, getTableColumns, sql } from 'drizzle-orm';
 import {
   organizations,
   projects,
+  users,
   subscriptions,
   auditLogs,
   apiKeys,
@@ -16,6 +17,8 @@ import {
   adminOrganizationSchema,
   adminAuditLogSchema,
   adminWebhookSchema,
+  adminProjectSchema,
+  adminUserSchema,
 } from '../validation/schemas';
 import { validationErrorHook, validationErrorHandler } from '../validation/error-handlers';
 
@@ -83,6 +86,56 @@ adminApp.openapi(adminOrganizationsRoute, async (c) => {
   }));
 
   return c.json(enriched);
+});
+
+// Platform Admin: List all projects across all organizations
+const adminProjectsRoute = createRoute({
+  method: 'get',
+  path: '/projects',
+  tags: ['admin'],
+  responses: {
+    200: {
+      description: 'All projects across all organizations',
+      content: { 'application/json': { schema: z.array(adminProjectSchema) } },
+    },
+  },
+});
+
+adminApp.openapi(adminProjectsRoute, async (c) => {
+  const result = await db
+    .select({
+      ...getTableColumns(projects),
+      orgName: organizations.name,
+    })
+    .from(projects)
+    .leftJoin(organizations, sql`${projects.organizationId} = ${organizations.id}`)
+    .orderBy(desc(projects.createdAt))
+    .limit(200);
+
+  return c.json(result);
+});
+
+// Platform Admin: List all users across the platform
+const adminUsersRoute = createRoute({
+  method: 'get',
+  path: '/users',
+  tags: ['admin'],
+  responses: {
+    200: {
+      description: 'All users across the platform',
+      content: { 'application/json': { schema: z.array(adminUserSchema) } },
+    },
+  },
+});
+
+adminApp.openapi(adminUsersRoute, async (c) => {
+  const result = await db
+    .select()
+    .from(users)
+    .orderBy(desc(users.createdAt))
+    .limit(200);
+
+  return c.json(result);
 });
 
 // Platform Admin: Global immutable audit logs
