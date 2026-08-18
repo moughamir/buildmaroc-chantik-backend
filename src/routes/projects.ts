@@ -131,7 +131,7 @@ projectsApp.openapi(listProjectsRoute, async (c) => {
       date: notes.createdAt,
     })
     .from(notes)
-    .innerJoin(users, eq(users.id, notes.createdById))
+    .leftJoin(users, eq(users.id, notes.createdById))
     .where(inArray(notes.projectId, projectIds))
     .orderBy(desc(notes.createdAt));
 
